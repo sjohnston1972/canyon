@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+
+# Source data files (not needed in repo)
+canyon_map.kml
+kml_waypoints.json
+river_path_ts.txt
+Grand_Canyon_Rafting.gpx
+landing-page.png

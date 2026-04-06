@@ -1,0 +1,36 @@
+services:
+  canyon:
+    build:
+      context: .
+      args:
+        - VITE_GOOGLE_MAPS_API_KEY=${VITE_GOOGLE_MAPS_API_KEY:-}
+        - VITE_GOOGLE_MAPS_MAP_ID=${VITE_GOOGLE_MAPS_MAP_ID:-}
+        - VITE_POCKETBASE_URL=${VITE_POCKETBASE_URL:-http://canyon-db:8090}
+    container_name: canyon
+    restart: unless-stopped
+    ports:
+      - "8202:80"
+    depends_on:
+      - db
+    networks:
+      - net_core
+
+  db:
+    build:
+      context: ./pocketbase
+    container_name: canyon-db
+    restart: unless-stopped
+    ports:
+      - "8203:8090"
+    volumes:
+      - canyon-data:/pb/pb_data
+      - ./pocketbase/pb_migrations:/pb/pb_migrations
+    networks:
+      - net_core
+
+volumes:
+  canyon-data:
+
+networks:
+  net_core:
+    external: true
