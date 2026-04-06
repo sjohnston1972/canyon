@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from 'react'
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import {
   APIProvider,
   Map,
@@ -200,33 +200,22 @@ function WaypointMarkers({
           />
         )
       })}
+      {/* Simple label InfoWindow — no click handling (Google Maps iframe blocks events) */}
       {infoWaypoint && (
         <InfoWindow
           position={{ lat: infoWaypoint.lat, lng: infoWaypoint.lng }}
           onCloseClick={onDeselect}
           pixelOffset={[0, -36]}
         >
-          <div
-            onClick={onInfoClick}
-            style={{ background: '#131313', color: '#e5e2e1', padding: '8px 12px', minWidth: '180px', fontFamily: 'Inter, sans-serif', cursor: 'pointer' }}
-          >
-            <div style={{ fontFamily: '"Space Grotesk", sans-serif', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <div style={{ background: '#131313', color: '#e5e2e1', padding: '6px 10px', fontFamily: 'Inter, sans-serif' }}>
+            <div style={{ fontFamily: '"Space Grotesk", sans-serif', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               {infoWaypoint.name}
             </div>
-            <div style={{ fontSize: '10px', color: '#c6c6c6', marginTop: '4px', display: 'flex', gap: '12px' }}>
-              <span>RM {infoWaypoint.riverMile}</span>
-              <span style={{ textTransform: 'uppercase' }}>{infoWaypoint.type}</span>
+            <div style={{ fontSize: '9px', color: '#c6c6c6', marginTop: '2px' }}>
+              RM {infoWaypoint.riverMile}
               {infoWaypoint.type === 'rapid' && infoWaypoint.difficulty > 0 && (
-                <span style={{ color: '#ffdeac' }}>Class {infoWaypoint.difficulty}</span>
+                <span style={{ color: '#ffdeac', marginLeft: '8px' }}>Class {infoWaypoint.difficulty}</span>
               )}
-            </div>
-            {infoWaypoint.notes && (
-              <div style={{ fontSize: '10px', color: '#c6c6c6', marginTop: '6px', maxWidth: '280px', lineHeight: '1.4' }}>
-                {infoWaypoint.notes.length > 150 ? infoWaypoint.notes.slice(0, 150) + '...' : infoWaypoint.notes}
-              </div>
-            )}
-            <div style={{ fontSize: '9px', color: '#ffdeac', marginTop: '6px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-              Tap for full details
             </div>
           </div>
         </InfoWindow>
@@ -509,6 +498,14 @@ function LeftPanel({
 
 // --- Right Panel ---
 function RightPanel({ waypoint }: { waypoint: Waypoint | null }) {
+  const panelRef = useRef<HTMLDivElement>(null)
+  // Scroll to top when waypoint changes
+  useEffect(() => {
+    if (waypoint && panelRef.current) {
+      panelRef.current.scrollTop = 0
+    }
+  }, [waypoint?.id])
+
   const wp = waypoint
   if (!wp) return (
     <div className="w-full lg:w-[320px] flex-shrink-0 bg-surface-container-lowest flex flex-col items-center justify-center border-l border-outline-variant/20 p-6">
@@ -518,7 +515,7 @@ function RightPanel({ waypoint }: { waypoint: Waypoint | null }) {
   )
 
   return (
-    <div className="w-full lg:w-[320px] flex-shrink-0 bg-surface-container-lowest flex flex-col border-l border-outline-variant/20 overflow-y-auto">
+    <div ref={panelRef} className="w-full lg:w-[320px] flex-shrink-0 bg-surface-container-lowest flex flex-col border-l border-outline-variant/20 overflow-y-auto">
       {/* Header */}
       <div className="p-4 border-b border-outline-variant/20">
         <h2 className="font-display text-xs font-bold text-primary tracking-widest uppercase">
@@ -691,7 +688,7 @@ export default function MapView() {
   )
   const [mapType, setMapType] = useState<string>('terrain')
   const [editPath, setEditPath] = useState(false)
-  const [mobileLeftOpen, setMobileLeftOpen] = useState(false)
+  const [mobileLeftOpen, setMobileLeftOpen] = useState(true)
   const [mobileRightOpen, setMobileRightOpen] = useState(false)
 
   // Use a ref to pan the map without fighting controlled center
@@ -754,7 +751,7 @@ export default function MapView() {
         <div className="fixed inset-0 z-40 lg:hidden" onClick={() => setMobileLeftOpen(false)}>
           <div className="absolute inset-0 bg-black/50" />
           <div
-            className="absolute left-0 top-0 bottom-0 w-[280px] bg-surface-container-lowest shadow-xl"
+            className="absolute left-0 top-0 bottom-0 w-[280px] bg-surface-container-lowest shadow-xl overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Close button */}
@@ -815,7 +812,7 @@ export default function MapView() {
             {selectedWaypoint && !mobileRightOpen && (
               <button
                 onClick={() => setMobileRightOpen(true)}
-                className="lg:hidden absolute bottom-4 left-4 right-4 z-30 bg-surface-container-lowest/95 shadow-xl p-3 flex items-center gap-3 active:bg-surface-container-high transition-colors"
+                className="lg:hidden absolute bottom-4 left-4 right-4 z-30 bg-surface-container-lowest shadow-xl p-3 flex items-center gap-3 active:bg-surface-container-high transition-colors"
               >
                 <span
                   className="w-3 h-3 flex-shrink-0"
@@ -833,13 +830,14 @@ export default function MapView() {
                         Class {selectedWaypoint.difficulty}
                       </span>
                     )}
+                    <span className="font-label text-[9px] text-tertiary uppercase tracking-widest ml-auto">Tap for details</span>
                   </div>
                 </div>
-                <span className="material-symbols-outlined text-on-surface-variant flex-shrink-0">expand_less</span>
+                <span className="material-symbols-outlined text-tertiary flex-shrink-0">expand_less</span>
               </button>
             )}
 
-            {/* Mobile: info button when nothing selected */}
+            {/* Info button when nothing selected (mobile only) */}
             {!selectedWaypoint && (
               <button
                 onClick={() => setMobileRightOpen(true)}

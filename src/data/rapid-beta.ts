@@ -31,7 +31,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'badger',
-    name: 'Badger',
+    name: 'Badger Rapid',
     riverMile: 8,
     rating: 5,
     drop: 'N/A',
@@ -57,7 +57,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'brown-s-riffle-rapid',
-    name: 'Brown’s Riffle Rapid',
+    name: 'Brown’s Riffle',
     riverMile: 12,
     rating: 2,
     drop: 'N/A',
@@ -96,7 +96,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'house-rock',
-    name: 'House Rock',
+    name: 'House Rock Rapid',
     riverMile: 17,
     rating: 7,
     drop: 'N/A',
@@ -174,7 +174,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'indian-dick-23',
-    name: 'Indian Dick (23)',
+    name: 'Indian Dick (23) Rapid',
     riverMile: 23,
     rating: 4,
     drop: 'N/A',
@@ -226,7 +226,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'cave-springs',
-    name: 'Cave Springs',
+    name: 'Cave Springs Rapid',
     riverMile: 25.7,
     rating: 5,
     drop: 'N/A',
@@ -265,7 +265,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: '29-mile',
-    name: '29 Mile',
+    name: '29 Mile Rapid',
     riverMile: 29.2,
     rating: 2,
     drop: 'N/A',
@@ -369,7 +369,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'nankoweap',
-    name: 'Nankoweap',
+    name: 'Nankoweap Rapid',
     riverMile: 52.4,
     rating: 3,
     drop: 'N/A',
@@ -460,7 +460,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'tanner-rapid',
-    name: 'Tanner',
+    name: 'Tanner Rapid',
     riverMile: 69,
     rating: 6,
     drop: 'N/A',
@@ -512,7 +512,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'nevill-s',
-    name: 'Nevill’s',
+    name: 'Nevill’s Rapid',
     riverMile: 76,
     rating: 6,
     drop: 'N/A',
@@ -525,7 +525,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'hance-rapid',
-    name: 'Hance',
+    name: 'Hance Rapid',
     riverMile: 77.2,
     rating: 8,
     drop: '30 ft',
@@ -538,7 +538,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'son-of-hance',
-    name: 'Son of Hance',
+    name: 'Son of Hance Rapid',
     riverMile: 77.5,
     rating: 4,
     drop: 'N/A',
@@ -551,7 +551,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'sockdolager',
-    name: 'Sockdolager',
+    name: 'Sockdolager Rapid',
     riverMile: 79.1,
     rating: 7,
     drop: '19 ft',
@@ -564,7 +564,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'small-sock',
-    name: 'Small Sock’',
+    name: 'Small Sock’ Rapid',
     riverMile: 79.4,
     rating: 2,
     drop: 'N/A',
@@ -590,7 +590,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'grapevine-rapid',
-    name: 'Grapevine',
+    name: 'Grapevine Rapid',
     riverMile: 82.1,
     rating: 7,
     drop: 'N/A',
@@ -603,7 +603,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: '83-mile',
-    name: '83 Mile',
+    name: '83 Mile Rapid',
     riverMile: 84.2,
     rating: 4,
     drop: 'N/A',
@@ -616,7 +616,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'zoroaster-rapid',
-    name: 'Zoroaster',
+    name: 'Zoroaster Rapid',
     riverMile: 85.2,
     rating: 5,
     drop: 'N/A',
@@ -629,7 +629,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: '85-mile',
-    name: '85 Mile',
+    name: '85 Mile Rapid',
     riverMile: 85.8,
     rating: 3,
     drop: 'N/A',
@@ -642,7 +642,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'bright-angel',
-    name: 'Bright Angel',
+    name: 'Bright Angel Rapid',
     riverMile: 88.3,
     rating: 3,
     drop: 'N/A',
@@ -655,7 +655,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'pipe-creek',
-    name: 'Pipe Creek',
+    name: 'Pipe Creek Rapid',
     riverMile: 89.6,
     rating: 3,
     drop: 'N/A',
@@ -668,7 +668,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'horn-creek',
-    name: 'Horn Creek',
+    name: 'Horn Creek Rapid',
     riverMile: 90.8,
     rating: 8,
     drop: '22 ft',
@@ -681,7 +681,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'salt-creek',
-    name: 'Salt Creek',
+    name: 'Salt Creek Rapid',
     riverMile: 93.1,
     rating: 2,
     drop: 'N/A',
@@ -694,7 +694,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'granite',
-    name: 'Granite',
+    name: 'Granite Rapid',
     riverMile: 94,
     rating: 8,
     drop: '17 ft',
@@ -720,7 +720,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'hermit-rapid',
-    name: 'Hermit',
+    name: 'Hermit Rapid',
     riverMile: 95.5,
     rating: 8,
     drop: '15 ft',
@@ -733,7 +733,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'boucher-rapid',
-    name: 'Boucher',
+    name: 'Boucher Rapid',
     riverMile: 97,
     rating: 4,
     drop: 'N/A',
@@ -746,7 +746,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'crystal',
-    name: 'Crystal',
+    name: 'Crystal Rapid',
     riverMile: 98.9,
     rating: 8,
     drop: '17 ft',
@@ -759,7 +759,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'tuna-creek',
-    name: 'Tuna Creek',
+    name: 'Tuna Creek Rapid',
     riverMile: 99.7,
     rating: 6,
     drop: 'N/A',
@@ -772,7 +772,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'lower-tuna-rapid',
-    name: 'Lower Tuna',
+    name: 'Lower Tuna Rapid',
     riverMile: 100.1,
     rating: 4,
     drop: 'N/A',
@@ -785,7 +785,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'nixon-rock',
-    name: 'Nixon Rock',
+    name: 'Nixon Rock Rapid',
     riverMile: 100.3,
     rating: 3,
     drop: 'N/A',
@@ -798,7 +798,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'agate',
-    name: 'Agate',
+    name: 'Agate Rapid',
     riverMile: 101,
     rating: 3,
     drop: 'N/A',
@@ -811,7 +811,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'sapphire',
-    name: 'Sapphire',
+    name: 'Sapphire Rapid',
     riverMile: 101.8,
     rating: 6,
     drop: 'N/A',
@@ -824,7 +824,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'turquoise',
-    name: 'Turquoise',
+    name: 'Turquoise Rapid',
     riverMile: 102.5,
     rating: 3,
     drop: 'N/A',
@@ -837,7 +837,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'emerald-rapid',
-    name: 'Emerald',
+    name: 'Emerald Rapid',
     riverMile: 104.4,
     rating: 5,
     drop: 'N/A',
@@ -850,7 +850,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'ruby',
-    name: 'Ruby',
+    name: 'Ruby Rapid',
     riverMile: 105.2,
     rating: 5,
     drop: 'N/A',
@@ -876,7 +876,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'serpentine',
-    name: 'Serpentine',
+    name: 'Serpentine Rapid',
     riverMile: 106.5,
     rating: 7,
     drop: 'N/A',
@@ -915,7 +915,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: '109-mile',
-    name: '109 Mile',
+    name: '109 Mile Rapid',
     riverMile: 109.7,
     rating: 2,
     drop: 'N/A',
@@ -928,7 +928,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: '110-mile',
-    name: '110 Mile',
+    name: '110 Mile Rapid',
     riverMile: 110.4,
     rating: 3,
     drop: 'N/A',
@@ -941,7 +941,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'hakatai',
-    name: 'Hakatai',
+    name: 'Hakatai Rapid',
     riverMile: 111.3,
     rating: 4,
     drop: 'N/A',
@@ -954,7 +954,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'walthenburg',
-    name: 'Walthenburg',
+    name: 'Walthenburg Rapid',
     riverMile: 112.8,
     rating: 6,
     drop: 'N/A',
@@ -967,7 +967,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'below-walthenburg',
-    name: 'Below Walthenburg',
+    name: 'Below Walthenburg Rapid',
     riverMile: 113.1,
     rating: 3,
     drop: 'N/A',
@@ -980,7 +980,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: '119-mile',
-    name: '119 Mile',
+    name: '119 Mile Rapid',
     riverMile: 119.2,
     rating: 2,
     drop: 'N/A',
@@ -993,7 +993,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'blacktail',
-    name: 'Blacktail',
+    name: 'Blacktail Rapid',
     riverMile: 120.7,
     rating: 3,
     drop: 'N/A',
@@ -1006,7 +1006,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: '122-mile-rapid',
-    name: '122 Mile',
+    name: '122 Mile Rapid',
     riverMile: 122.2,
     rating: 4,
     drop: 'N/A',
@@ -1019,7 +1019,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'forster',
-    name: 'Forster',
+    name: 'Forster Rapid',
     riverMile: 123.3,
     rating: 5,
     drop: 'N/A',
@@ -1032,7 +1032,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: '125-mile',
-    name: '125 Mile',
+    name: '125 Mile Rapid',
     riverMile: 125,
     rating: 3,
     drop: 'N/A',
@@ -1045,7 +1045,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'fossil-rapid',
-    name: 'Fossil',
+    name: 'Fossil Rapid',
     riverMile: 125.4,
     rating: 5,
     drop: 'N/A',
@@ -1058,7 +1058,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: '126-4-mile',
-    name: '126.4 Mile',
+    name: '126.4 Mile Rapid',
     riverMile: 126.4,
     rating: 3,
     drop: 'N/A',
@@ -1097,7 +1097,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: '128-4-mile',
-    name: '128.4 Mile',
+    name: '128.4 Mile Rapid',
     riverMile: 128.4,
     rating: 3,
     drop: 'N/A',
@@ -1123,7 +1123,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'specter',
-    name: 'Specter',
+    name: 'Specter Rapid',
     riverMile: 129.8,
     rating: 6,
     drop: 'N/A',
@@ -1162,7 +1162,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'tapeats',
-    name: 'Tapeats',
+    name: 'Tapeats Rapid',
     riverMile: 134.4,
     rating: 5,
     drop: 'N/A',
@@ -1214,7 +1214,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: '138-5-mile',
-    name: '138.5 Mile',
+    name: '138.5 Mile Rapid',
     riverMile: 139.1,
     rating: 3,
     drop: 'N/A',
@@ -1227,7 +1227,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'fishtail-rapid',
-    name: 'Fishtail',
+    name: 'Fishtail Rapid',
     riverMile: 139.8,
     rating: 4,
     drop: 'N/A',
@@ -1240,7 +1240,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: '141-mile-rapid',
-    name: '141 Mile',
+    name: '141 Mile Rapid',
     riverMile: 141.8,
     rating: 2,
     drop: 'N/A',
@@ -1253,7 +1253,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: '141-mile-rapid-2',
-    name: '141 Mile',
+    name: '141 Mile Rapid',
     riverMile: 141.8,
     rating: 2,
     drop: 'N/A',
@@ -1266,7 +1266,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'kanab',
-    name: 'Kanab',
+    name: 'Kanab Rapid',
     riverMile: 144,
     rating: 3,
     drop: 'N/A',
@@ -1279,7 +1279,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'matkatamiba',
-    name: 'Matkatamiba',
+    name: 'Matkatamiba Rapid',
     riverMile: 148.3,
     rating: 2,
     drop: 'N/A',
@@ -1292,7 +1292,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'upset',
-    name: 'Upset',
+    name: 'Upset Rapid',
     riverMile: 150.1,
     rating: 8,
     drop: 'N/A',
@@ -1305,7 +1305,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'sinyella',
-    name: 'Sinyella',
+    name: 'Sinyella Rapid',
     riverMile: 154,
     rating: 2,
     drop: 'N/A',
@@ -1318,7 +1318,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'above-havasu-rock-island',
-    name: 'Above Havasu Rock Island',
+    name: 'Above Havasu Rock Island Rapid',
     riverMile: 155.3,
     rating: 1,
     drop: 'N/A',
@@ -1331,7 +1331,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'havasu',
-    name: 'Havasu',
+    name: 'Havasu Rapid',
     riverMile: 157.2,
     rating: 3,
     drop: 'N/A',
@@ -1357,7 +1357,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: '164-mile-tuckup',
-    name: '164 Mile (Tuckup)',
+    name: '164 Mile (Tuckup) Rapid',
     riverMile: 165,
     rating: 2,
     drop: 'N/A',
@@ -1370,7 +1370,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'national',
-    name: 'National',
+    name: 'National Rapid',
     riverMile: 167,
     rating: 2,
     drop: 'N/A',
@@ -1383,7 +1383,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'fern-glen-rapid',
-    name: 'Fern Glen',
+    name: 'Fern Glen Rapid',
     riverMile: 168.5,
     rating: 2,
     drop: 'N/A',
@@ -1396,7 +1396,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'gateway',
-    name: 'GATEWAY',
+    name: 'GATEWAY Rapid',
     riverMile: 171.9,
     rating: 3,
     drop: 'N/A',
@@ -1409,7 +1409,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'lava-falls',
-    name: 'LAVA FALLS',
+    name: 'Lava Falls',
     riverMile: 179.7,
     rating: 9,
     drop: '37 ft',
@@ -1422,7 +1422,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'son-of-lava-lower-lava',
-    name: 'SON OF LAVA (LOWER LAVA)',
+    name: 'SON OF LAVA (LOWER LAVA) Rapid',
     riverMile: 180,
     rating: 4,
     drop: 'N/A',
@@ -1435,7 +1435,7 @@ export const rapidBeta: RapidBeta[] = [
   },
   {
     id: 'whitmore-wash-rapid',
-    name: 'WHITMORE WASH RAPID',
+    name: 'WHITMORE WASH RAPID Rapid',
     riverMile: 188.3,
     rating: 3,
     drop: 'N/A',

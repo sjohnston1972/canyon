@@ -38,30 +38,30 @@ interface TimelineEntry {
 
 const timelineEntries: TimelineEntry[] = [
   { id: 'launch', day: 'D01', label: "Lee's Ferry Launch", mile: 0, type: 'launch', summary: 'River mile zero. Last vehicle access. NPS ranger check-in, rig rafts, final gear check.', milestone: true },
-  { id: 'r-badger', day: 'D01', label: 'Badger Creek', mile: 8, type: 'rapid', rapidId: 'badger', rating: 5 },
-  { id: 'r-soap', day: 'D01', label: 'Soap Creek', mile: 11.4, type: 'rapid', rapidId: 'soap-creek-rapid', rating: 5 },
+  { id: 'r-badger', day: 'D01', label: 'Badger Creek Rapid', mile: 8, type: 'rapid', rapidId: 'badger', rating: 5 },
+  { id: 'r-soap', day: 'D01', label: 'Soap Creek Rapid', mile: 11.4, type: 'rapid', rapidId: 'soap-creek-rapid', rating: 5 },
   { id: 'c-d01', day: 'D01', label: 'Navajo Bridge Camp', mile: 12.5, type: 'camp', summary: 'Camp near the historic Navajo Bridge. First night on the river. Settle into camp routine.' },
-  { id: 'r-house', day: 'D02', label: 'House Rock', mile: 17.1, type: 'rapid', rapidId: 'house-rock', rating: 7 },
-  { id: 'r-25mi', day: 'D02', label: '25 Mile', mile: 25.1, type: 'rapid', rapidId: '25-mile-rapid', rating: 6 },
+  { id: 'r-house', day: 'D02', label: 'House Rock Rapid', mile: 17.1, type: 'rapid', rapidId: 'house-rock', rating: 7 },
+  { id: 'r-25mi', day: 'D02', label: '25 Mile Rapid', mile: 25.1, type: 'rapid', rapidId: '25-mile-rapid', rating: 6 },
   { id: 'c-d02', day: 'D02', label: 'South Canyon Camp', mile: 27, type: 'camp', summary: 'Large camp with Ancestral Puebloan ruins nearby. Good morning light for photos.' },
   { id: 'c-d03', day: 'D03', label: 'Redwall Cavern', mile: 33, type: 'camp', summary: 'Massive alcove in Redwall Limestone. Fits 100+ people. Popular lunch stop. Great acoustics.' },
   { id: 'c-d04', day: 'D04', label: 'Nankoweap', mile: 52, type: 'camp', summary: 'Large beach camp. Hike to Ancestral Puebloan granaries with panoramic river views. Layover day.', milestone: true },
   { id: 'c-d05', day: 'D05', label: 'Little Colorado', mile: 62, type: 'camp', summary: 'Turquoise tributary confluence. Sacred Hopi site. Swim in the blue water if conditions allow.', milestone: true },
   { id: 'c-d06', day: 'D06', label: 'Phantom Ranch', mile: 87.5, type: 'camp', summary: 'Only developed facility in the canyon. Phone, canteen, mail. Primary evacuation point via Bright Angel Trail.', milestone: true },
-  { id: 'r-hance', day: 'D07', label: 'Hance', mile: 77.1, type: 'rapid', rapidId: 'hance-rapid', rating: 8 },
-  { id: 'r-sock', day: 'D07', label: 'Sockdolager', mile: 79.1, type: 'rapid', rapidId: 'sockdolager', rating: 7 },
-  { id: 'r-grape', day: 'D07', label: 'Grapevine', mile: 82.1, type: 'rapid', rapidId: 'grapevine-rapid', rating: 7 },
+  { id: 'r-hance', day: 'D07', label: 'Hance Rapid', mile: 77.1, type: 'rapid', rapidId: 'hance-rapid', rating: 8 },
+  { id: 'r-sock', day: 'D07', label: 'Sockdolager Rapid', mile: 79.1, type: 'rapid', rapidId: 'sockdolager', rating: 7 },
+  { id: 'r-grape', day: 'D07', label: 'Grapevine Rapid', mile: 82.1, type: 'rapid', rapidId: 'grapevine-rapid', rating: 7 },
   { id: 'c-d07', day: 'D07', label: 'Bright Angel Camp', mile: 88, type: 'camp', summary: 'Camp near Bright Angel Creek. Resupply at Phantom Ranch canteen. Last reliable phone contact.' },
-  { id: 'r-horn', day: 'D08', label: 'Horn Creek', mile: 90.8, type: 'rapid', rapidId: 'horn-creek', rating: 8 },
-  { id: 'r-granite', day: 'D08', label: 'Granite', mile: 93.9, type: 'rapid', rapidId: 'granite', rating: 8 },
-  { id: 'r-hermit', day: 'D08', label: 'Hermit', mile: 95.5, type: 'rapid', rapidId: 'hermit-rapid', rating: 8 },
-  { id: 'r-crystal', day: 'D08', label: 'Crystal', mile: 98.2, type: 'rapid', rapidId: 'crystal', rating: 8 },
+  { id: 'r-horn', day: 'D08', label: 'Horn Creek Rapid', mile: 90.8, type: 'rapid', rapidId: 'horn-creek', rating: 8 },
+  { id: 'r-granite', day: 'D08', label: 'Granite Rapid', mile: 93.9, type: 'rapid', rapidId: 'granite', rating: 8 },
+  { id: 'r-hermit', day: 'D08', label: 'Hermit Rapid', mile: 95.5, type: 'rapid', rapidId: 'hermit-rapid', rating: 8 },
+  { id: 'r-crystal', day: 'D08', label: 'Crystal Rapid', mile: 98.2, type: 'rapid', rapidId: 'crystal', rating: 8 },
   { id: 'c-d08', day: 'D08', label: 'Bass Camp', mile: 108, type: 'camp', summary: 'Camp near Bass Trail. Four class 8 rapids today — rest well. Check gear for damage.' },
   { id: 'c-d09', day: 'D09', label: 'Shinumo Creek', mile: 109, type: 'camp', summary: 'Clear-water creek with swimming holes. Camp at the confluence. Good layover for rest day.' },
   { id: 'c-d10', day: 'D10', label: 'Elves Chasm', mile: 117, type: 'camp', summary: 'Stunning waterfall grotto via short hike up Royal Arch Creek. One of the canyon\'s hidden gems.' },
-  { id: 'r-deub', day: 'D11', label: 'Deubendorff', mile: 132.3, type: 'rapid', rapidId: 'deubendorff-rapid', rating: 7 },
+  { id: 'r-deub', day: 'D11', label: 'Deubendorff Rapid', mile: 132.3, type: 'rapid', rapidId: 'deubendorff-rapid', rating: 7 },
   { id: 'c-d11', day: 'D11', label: 'Deer Creek', mile: 136, type: 'camp', summary: '100ft waterfall directly into the river. Hike to "The Patio" narrows and Surprise Valley.', milestone: true },
-  { id: 'r-upset', day: 'D12', label: 'Upset', mile: 150.2, type: 'rapid', rapidId: 'upset', rating: 8 },
+  { id: 'r-upset', day: 'D12', label: 'Upset Rapid', mile: 150.2, type: 'rapid', rapidId: 'upset', rating: 8 },
   { id: 'c-d12', day: 'D12', label: 'Havasu Creek', mile: 157, type: 'camp', summary: 'Iconic turquoise water. Must-visit. Hike to Beaver Falls. Day use only past falls — Havasupai land.', milestone: true },
   { id: 'c-d13', day: 'D13', label: 'National Canyon', mile: 166, type: 'camp', summary: 'Short hike into a slot canyon with seasonal waterfall. Good camp with morning sun.' },
   { id: 'r-lava', day: 'D14', label: 'Lava Falls', mile: 179.4, type: 'rapid', rapidId: 'lava-falls', rating: 9 },
@@ -238,9 +238,7 @@ function RapidDetail({ rapid, media, mediaRecordIds, onMediaAdd, onMediaRemove, 
     if (recordId) onMediaRemove(recordId)
   }
 
-  const EditableField = ({ label, icon, field, value, iconColor = 'text-on-surface-variant', italic = false, cardClass = 'surface-card' }: {
-    label: string; icon: string; field: string; value: string; iconColor?: string; italic?: boolean; cardClass?: string
-  }) => (
+  const ef = (label: string, icon: string, field: string, value: string, iconColor = 'text-on-surface-variant', italic = false, cardClass = 'surface-card') => (
     <div className={cardClass}>
       <div className="flex items-center gap-2 mb-2">
         <span className={`material-symbols-outlined text-sm ${iconColor}`}>{icon}</span>
@@ -309,19 +307,19 @@ function RapidDetail({ rapid, media, mediaRecordIds, onMediaAdd, onMediaRemove, 
       </div>
 
       {/* Description */}
-      <EditableField label="Description" icon="description" field="description" value={rapid.description} />
+      {ef('Description', 'description', 'description', rapid.description)}
 
       {/* Scout & Run */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <EditableField label="Scout" icon="visibility" field="scout" value={rapid.scout} iconColor="text-tertiary" cardClass="surface-card-elevated" />
-        <EditableField label="Recommended Run" icon="kayaking" field="run" value={rapid.run} iconColor="text-tertiary" cardClass="surface-card-elevated" />
+        {ef('Scout', 'visibility', 'scout', rapid.scout, 'text-tertiary', false, 'surface-card-elevated')}
+        {ef('Recommended Run', 'kayaking', 'run', rapid.run, 'text-tertiary', false, 'surface-card-elevated')}
       </div>
 
       {/* Hazards */}
-      <EditableField label="Hazards" icon="warning" field="hazards" value={rapid.hazards} iconColor="text-error" cardClass="surface-card border-l-2 border-error" />
+      {ef('Hazards', 'warning', 'hazards', rapid.hazards, 'text-error', false, 'surface-card border-l-2 border-error')}
 
       {/* History */}
-      <EditableField label="History & Notes" icon="history_edu" field="history" value={rapid.history} italic />
+      {ef('History & Notes', 'history_edu', 'history', rapid.history, 'text-on-surface-variant', true)}
 
       {/* Media — Photos & Videos */}
       <div className="surface-card">
@@ -730,7 +728,6 @@ export default function Command() {
   const handleEntryClick = (entry: TimelineEntry) => {
     setSelectedDay(entry.day)
     if (entry.type === 'rapid' && entry.rapidId) {
-      // Toggle rapid
       setSelectedEntryId(null)
       if (selectedRapid && selectedRapid.id === entry.rapidId) {
         setSelectedRapid(null)
@@ -739,7 +736,6 @@ export default function Command() {
         if (rapid) setSelectedRapid(rapid)
       }
     } else {
-      // Toggle non-rapid entry
       setSelectedRapid(null)
       if (selectedEntryId === entry.id) {
         setSelectedEntryId(null)
@@ -747,6 +743,11 @@ export default function Command() {
         setSelectedEntryId(entry.id)
       }
     }
+    // Scroll the clicked entry into view after React re-renders
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`tl-${entry.id}`)
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
   }
 
   // Timeline entry renderer (shared between mobile and desktop)
@@ -793,8 +794,9 @@ export default function Command() {
                     {entry.type === 'launch' ? 'rocket_launch' : 'flag'}
                   </span>
                 ) : (
-                  <span className={`material-symbols-outlined flex-shrink-0 ${isMilestone ? 'text-tertiary/60' : 'text-outline/40'}`} style={{ fontSize: '13px' }}>
-                    {isMilestone ? 'star' : 'camping'}
+                  <span className="flex items-center gap-0.5 flex-shrink-0">
+                    <span className={`material-symbols-outlined ${isMilestone ? 'text-tertiary/60' : 'text-outline/40'}`} style={{ fontSize: '13px' }}>camping</span>
+                    {isMilestone && <span className="material-symbols-outlined text-tertiary/50" style={{ fontSize: '10px' }}>star</span>}
                   </span>
                 )}
                 <span className={`text-xs leading-tight truncate flex-1 ${
@@ -844,7 +846,7 @@ export default function Command() {
                 const isLaunchOrEgress = entry.type === 'launch' || entry.type === 'egress'
 
                 return (
-                  <div key={`mob-${entry.day}-${entry.label}`}>
+                  <div key={`mob-${entry.day}-${entry.label}`} id={`tl-${entry.id}`}>
                     {/* Day separator for first entry of each day */}
                     {showDay && i > 0 && (
                       <div className="h-px bg-outline-variant/20 my-1" />
@@ -883,8 +885,9 @@ export default function Command() {
                             {entry.type === 'launch' ? 'rocket_launch' : 'flag'}
                           </span>
                         ) : (
-                          <span className={`material-symbols-outlined flex-shrink-0 ${isMilestone ? 'text-tertiary/70' : 'text-outline/50'}`} style={{ fontSize: '18px' }}>
-                            {isMilestone ? 'star' : 'camping'}
+                          <span className="flex items-center gap-0.5 flex-shrink-0">
+                            <span className={`material-symbols-outlined ${isMilestone ? 'text-tertiary/70' : 'text-outline/50'}`} style={{ fontSize: '18px' }}>camping</span>
+                            {isMilestone && <span className="material-symbols-outlined text-tertiary/50" style={{ fontSize: '12px' }}>star</span>}
                           </span>
                         )}
 
