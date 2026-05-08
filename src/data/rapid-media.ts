@@ -7,6 +7,9 @@ export interface RapidMedia {
 }
 
 export const rapidMedia: Record<string, RapidMedia[]> = {
+  launch: [
+    { type: 'photo', url: '/photos/lees-ferry.jpg', thumb: '/photos/lees-ferry.jpg', title: "Lee's Ferry Launch", source: 'GKC' },
+  ],
   badger: [
     { type: 'photo', url: '/media/rapids/badger-historic.jpg', thumb: '/media/rapids/badger-historic.jpg', title: 'Badger Creek Rapid — Historic NPS river photo', source: 'Wikimedia Commons / NPS' },
   ],

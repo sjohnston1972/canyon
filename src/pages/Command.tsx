@@ -42,11 +42,17 @@ const timelineEntries: TimelineEntry[] = [
   { id: 'r-soap', day: 'D01', label: 'Soap Creek Rapid', mile: 11.4, type: 'rapid', rapidId: 'soap-creek-rapid', rating: 5 },
   { id: 'c-d01', day: 'D01', label: 'Navajo Bridge Camp', mile: 12.5, type: 'camp', summary: 'Camp near the historic Navajo Bridge. First night on the river. Settle into camp routine.' },
   { id: 'r-house', day: 'D02', label: 'House Rock Rapid', mile: 17.1, type: 'rapid', rapidId: 'house-rock', rating: 7 },
+  { id: 'r-georgie', day: 'D02', label: 'Georgie Rapid', mile: 24.3, type: 'rapid', rapidId: 'georgie-rapid', rating: 6 },
+  { id: 'r-245mi', day: 'D02', label: '24.5 Mile Rapid', mile: 24.7, type: 'rapid', rapidId: '24-5-mile-rapid', rating: 6 },
   { id: 'r-25mi', day: 'D02', label: '25 Mile Rapid', mile: 25.1, type: 'rapid', rapidId: '25-mile-rapid', rating: 6 },
   { id: 'c-d02', day: 'D02', label: 'South Canyon Camp', mile: 27, type: 'camp', summary: 'Large camp with Ancestral Puebloan ruins nearby. Good morning light for photos.' },
   { id: 'c-d03', day: 'D03', label: 'Redwall Cavern', mile: 33, type: 'camp', summary: 'Massive alcove in Redwall Limestone. Fits 100+ people. Popular lunch stop. Great acoustics.' },
   { id: 'c-d04', day: 'D04', label: 'Nankoweap', mile: 52, type: 'camp', summary: 'Large beach camp. Hike to Ancestral Puebloan granaries with panoramic river views. Layover day.', milestone: true },
   { id: 'c-d05', day: 'D05', label: 'Little Colorado', mile: 62, type: 'camp', summary: 'Turquoise tributary confluence. Sacred Hopi site. Swim in the blue water if conditions allow.', milestone: true },
+  { id: 'r-tanner', day: 'D06', label: 'Tanner Rapid', mile: 69, type: 'rapid', rapidId: 'tanner-rapid', rating: 6 },
+  { id: 'r-basalt', day: 'D06', label: 'Basalt Rapid', mile: 69.9, type: 'rapid', rapidId: 'basalt-rapid', rating: 6 },
+  { id: 'r-unkar', day: 'D06', label: 'Unkar Rapid', mile: 72.9, type: 'rapid', rapidId: 'unkar-rapid', rating: 6 },
+  { id: 'r-nevills', day: 'D06', label: "Nevill's Rapid", mile: 76, type: 'rapid', rapidId: 'nevill-s', rating: 6 },
   { id: 'c-d06', day: 'D06', label: 'Phantom Ranch', mile: 87.5, type: 'camp', summary: 'Only developed facility in the canyon. Phone, canteen, mail. Primary evacuation point via Bright Angel Trail.', milestone: true },
   { id: 'r-hance', day: 'D07', label: 'Hance Rapid', mile: 77.1, type: 'rapid', rapidId: 'hance-rapid', rating: 8 },
   { id: 'r-sock', day: 'D07', label: 'Sockdolager Rapid', mile: 79.1, type: 'rapid', rapidId: 'sockdolager', rating: 7 },
@@ -56,9 +62,15 @@ const timelineEntries: TimelineEntry[] = [
   { id: 'r-granite', day: 'D08', label: 'Granite Rapid', mile: 93.9, type: 'rapid', rapidId: 'granite', rating: 8 },
   { id: 'r-hermit', day: 'D08', label: 'Hermit Rapid', mile: 95.5, type: 'rapid', rapidId: 'hermit-rapid', rating: 8 },
   { id: 'r-crystal', day: 'D08', label: 'Crystal Rapid', mile: 98.2, type: 'rapid', rapidId: 'crystal', rating: 8 },
-  { id: 'c-d08', day: 'D08', label: 'Bass Camp', mile: 108, type: 'camp', summary: 'Camp near Bass Trail. Four class 8 rapids today — rest well. Check gear for damage.' },
+  { id: 'r-tuna', day: 'D08', label: 'Tuna Creek Rapid', mile: 99.7, type: 'rapid', rapidId: 'tuna-creek', rating: 6 },
+  { id: 'r-sapphire', day: 'D08', label: 'Sapphire Rapid', mile: 101.8, type: 'rapid', rapidId: 'sapphire', rating: 6 },
+  { id: 'r-serpentine', day: 'D08', label: 'Serpentine Rapid', mile: 106.5, type: 'rapid', rapidId: 'serpentine', rating: 7 },
+  { id: 'c-d08', day: 'D08', label: 'Bass Camp', mile: 108, type: 'camp', summary: 'Camp near Bass Trail. Seven rapids today including four class 8s — rest well. Check gear for damage.' },
   { id: 'c-d09', day: 'D09', label: 'Shinumo Creek', mile: 109, type: 'camp', summary: 'Clear-water creek with swimming holes. Camp at the confluence. Good layover for rest day.' },
+  { id: 'r-walthenburg', day: 'D10', label: 'Walthenburg Rapid', mile: 112.8, type: 'rapid', rapidId: 'walthenburg', rating: 6 },
   { id: 'c-d10', day: 'D10', label: 'Elves Chasm', mile: 117, type: 'camp', summary: 'Stunning waterfall grotto via short hike up Royal Arch Creek. One of the canyon\'s hidden gems.' },
+  { id: 'r-specter', day: 'D11', label: 'Specter Rapid', mile: 129.8, type: 'rapid', rapidId: 'specter', rating: 6 },
+  { id: 'r-bedrock', day: 'D11', label: 'Bedrock Rapid', mile: 131, type: 'rapid', rapidId: 'bedrock-rapid', rating: 7 },
   { id: 'r-deub', day: 'D11', label: 'Deubendorff Rapid', mile: 132.3, type: 'rapid', rapidId: 'deubendorff-rapid', rating: 7 },
   { id: 'c-d11', day: 'D11', label: 'Deer Creek', mile: 136, type: 'camp', summary: '100ft waterfall directly into the river. Hike to "The Patio" narrows and Surprise Valley.', milestone: true },
   { id: 'r-upset', day: 'D12', label: 'Upset Rapid', mile: 150.2, type: 'rapid', rapidId: 'upset', rating: 8 },
@@ -305,6 +317,26 @@ function RapidDetail({ rapid, media, mediaRecordIds, onMediaAdd, onMediaRemove, 
           <GradingBar value={rapid.rating} />
         </div>
       </div>
+
+      {/* Rapid Diagram */}
+      {rapid.diagramPath && (
+        <div className="surface-card">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="material-symbols-outlined text-sm text-on-surface-variant">draw</span>
+            <span className="tactical-label">Rapid Diagram</span>
+          </div>
+          <div className="bg-white p-2">
+            <img
+              src={rapid.diagramPath}
+              alt={`Hand-drawn diagram of ${rapid.name}`}
+              className="w-full h-auto max-w-md mx-auto"
+            />
+          </div>
+          <p className="tactical-label text-[9px] mt-1.5 text-outline">
+            Source: Jim Michaud — How To Row The Grand Canyon Rapids
+          </p>
+        </div>
+      )}
 
       {/* Description */}
       {ef('Description', 'description', 'description', rapid.description)}
@@ -608,8 +640,9 @@ function EntryDetail({ entry, media, mediaRecordIds, onMediaAdd, onMediaRemove }
 
 export default function Command() {
   const [selectedRapid, setSelectedRapid] = useState<RapidBeta | null>(null)
-  const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null)
-  const [selectedDay, setSelectedDay] = useState('D08')
+  // Default to the Lee's Ferry launch on Day 01 — that's where the trip starts.
+  const [selectedEntryId, setSelectedEntryId] = useState<string | null>('launch')
+  const [selectedDay, setSelectedDay] = useState('D01')
 
   // PocketBase-backed media and rapid edits
   const {

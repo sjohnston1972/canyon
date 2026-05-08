@@ -6,9 +6,10 @@ import {
   useMap,
   InfoWindow,
 } from '@vis.gl/react-google-maps'
-import { waypoints, riverPath, markerColors, isMajorRapid, MAJOR_RAPID_THRESHOLD } from '@/data/waypoints'
+import { waypoints, riverPath as defaultRiverPath, markerColors, isMajorRapid, MAJOR_RAPID_THRESHOLD } from '@/data/waypoints'
 import type { Waypoint } from '@/data/waypoints'
 import { tacticalMapStyles } from '@/data/map-styles'
+import pb from '@/lib/pocketbase'
 
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''
 const MAP_ID = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || ''
@@ -60,70 +61,100 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number): numb
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
+// --- River path persistence ---
+const RIVER_PATH_KEY = 'river_path'
+let cachedRiverPath: google.maps.LatLngLiteral[] | null = null
+let riverPathRecordId: string | null = null
+
+async function loadRiverPath(): Promise<google.maps.LatLngLiteral[]> {
+  if (cachedRiverPath) return cachedRiverPath
+  try {
+    const records = await pb.collection('app_settings').getFullList({ filter: `key="${RIVER_PATH_KEY}"` })
+    if (records.length > 0 && Array.isArray(records[0].value) && records[0].value.length > 0) {
+      riverPathRecordId = records[0].id
+      cachedRiverPath = records[0].value as google.maps.LatLngLiteral[]
+      return cachedRiverPath
+    }
+  } catch (err) {
+    console.warn('Failed to load river path from PocketBase, using default:', err)
+  }
+  return defaultRiverPath
+}
+
+async function saveRiverPath(coords: google.maps.LatLngLiteral[]) {
+  cachedRiverPath = coords
+  try {
+    if (riverPathRecordId) {
+      await pb.collection('app_settings').update(riverPathRecordId, { value: coords })
+    } else {
+      const record = await pb.collection('app_settings').create({ key: RIVER_PATH_KEY, value: coords })
+      riverPathRecordId = record.id
+    }
+    console.log(`River path saved (${coords.length} points)`)
+  } catch (err) {
+    console.error('Failed to save river path:', err)
+  }
+}
+
 // --- River Polyline Component ---
 function RiverPolyline({ editable }: { editable: boolean }) {
   const map = useMap()
+  const [riverPath, setRiverPath] = useState<google.maps.LatLngLiteral[]>(cachedRiverPath ?? defaultRiverPath)
 
-  useMemo(() => {
+  useEffect(() => {
+    loadRiverPath().then(setRiverPath)
+  }, [])
+
+  useEffect(() => {
     if (!map) return
 
-    // When editable, interpolate to ~100m vertices for fine control
-    const pathData = editable ? interpolatePath(riverPath, 100) : riverPath
+    // When editable, add vertices at ~500m spacing for fine control
+    const pathData = editable ? interpolatePath(riverPath, 500) : riverPath
 
     const polyline = new google.maps.Polyline({
       path: pathData,
       geodesic: true,
-      strokeColor: editable ? '#2a8aaa' : '#1a6b8a',
-      strokeOpacity: 0.8,
-      strokeWeight: editable ? 3 : 4,
+      strokeColor: editable ? '#2a8aaa' : '#e8b84b',
+      strokeOpacity: editable ? 0.8 : 0.85,
+      strokeWeight: editable ? 3 : 5,
       editable,
       draggable: false,
       map,
     })
 
-    const glowLine = new google.maps.Polyline({
-      path: pathData,
-      geodesic: true,
-      strokeColor: '#0e4a6a',
-      strokeOpacity: editable ? 0.15 : 0.3,
-      strokeWeight: 10,
-      map,
-    })
-
-    const syncGlow = () => {
-      glowLine.setPath(polyline.getPath())
-    }
-
-    let listeners: google.maps.MapsEventListener[] = []
+    const listeners: google.maps.MapsEventListener[] = []
 
     if (editable) {
-      const exportPath = () => {
+      const extractAndSave = () => {
         const path = polyline.getPath()
         const coords: google.maps.LatLngLiteral[] = []
         for (let i = 0; i < path.getLength(); i++) {
           const p = path.getAt(i)
           coords.push({ lat: parseFloat(p.lat().toFixed(6)), lng: parseFloat(p.lng().toFixed(6)) })
         }
-        syncGlow()
-        console.log('--- RIVER PATH COORDINATES ---')
-        console.log(JSON.stringify(coords, null, 2))
-        console.log(`--- ${coords.length} points ---`)
+        saveRiverPath(coords)
       }
 
       const pathObj = polyline.getPath()
       listeners.push(
-        google.maps.event.addListener(pathObj, 'set_at', exportPath),
-        google.maps.event.addListener(pathObj, 'insert_at', exportPath),
-        google.maps.event.addListener(pathObj, 'remove_at', exportPath),
+        google.maps.event.addListener(pathObj, 'set_at', extractAndSave),
+        google.maps.event.addListener(pathObj, 'insert_at', extractAndSave),
+        google.maps.event.addListener(pathObj, 'remove_at', extractAndSave),
+        // Right-click a vertex to delete it
+        google.maps.event.addListener(polyline, 'rightclick', (e: google.maps.PolyMouseEvent) => {
+          if (e.vertex != null && pathObj.getLength() > 2) {
+            pathObj.removeAt(e.vertex)
+            extractAndSave()
+          }
+        }),
       )
     }
 
     return () => {
       listeners.forEach((l) => google.maps.event.removeListener(l))
       polyline.setMap(null)
-      glowLine.setMap(null)
     }
-  }, [map, editable])
+  }, [map, editable, riverPath])
 
   return null
 }
@@ -355,14 +386,6 @@ function LeftPanel({
 
   return (
     <div className="w-[280px] lg:w-[220px] flex-shrink-0 bg-surface-container-lowest flex flex-col border-r border-outline-variant/20 overflow-hidden">
-      {/* Header */}
-      <div className="p-4 border-b border-outline-variant/20">
-        <h2 className="font-display text-xs font-bold text-primary tracking-widest uppercase">
-          Planning Nodes
-        </h2>
-        <p className="tactical-label mt-1 text-[10px]">GC-2027 Expedition</p>
-      </div>
-
       {/* Mode Toggles */}
       <div className="p-3 flex flex-col gap-1 border-b border-outline-variant/20">
         {modes.map((mode) => (
@@ -488,7 +511,7 @@ function LeftPanel({
         </button>
         {editPath && (
           <p className="tactical-label text-[9px] mt-1.5 px-1">
-            Drag vertices to adjust. Updated coords logged to console.
+            Drag vertices to adjust. Right-click a vertex to delete it.
           </p>
         )}
       </div>
@@ -600,6 +623,23 @@ function RightPanel({ waypoint }: { waypoint: Waypoint | null }) {
           <div className="mt-2 p-3 bg-surface-container text-on-surface-variant font-body text-xs leading-relaxed">
             {wp.notes}
           </div>
+        </div>
+      )}
+
+      {/* Rapid Diagram */}
+      {wp.diagramPath && (
+        <div className="p-4 border-b border-outline-variant/20">
+          <span className="tactical-label text-[10px]">Rapid Diagram</span>
+          <div className="mt-2 bg-white p-2">
+            <img
+              src={wp.diagramPath}
+              alt={`Hand-drawn diagram of ${wp.name}`}
+              className="w-full h-auto"
+            />
+          </div>
+          <p className="tactical-label text-[9px] mt-1.5 text-outline">
+            Source: Jim Michaud — How To Row The Grand Canyon Rapids
+          </p>
         </div>
       )}
 

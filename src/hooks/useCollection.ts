@@ -26,19 +26,27 @@ export function useCollection<T extends RecordModel>(
     async function load() {
       try {
         setLoading(true)
-        const params: Record<string, string> = {}
+        const params: Record<string, unknown> = {
+          // Disable PocketBase's automatic request cancellation — without this, two
+          // hooks fetching the same collection at the same time will cancel each other.
+          requestKey: null,
+        }
         if (optionsRef.current.sort) params.sort = optionsRef.current.sort
         if (optionsRef.current.filter) params.filter = optionsRef.current.filter
         if (optionsRef.current.expand) params.expand = optionsRef.current.expand
-        const result = await pb.collection(collectionName).getFullList<T>(params)
+        const result = await pb.collection(collectionName).getFullList<T>(params as Record<string, string>)
         if (mountedRef.current) {
           setRecords(result)
           setError(null)
         }
-      } catch (err) {
-        console.error(`Error fetching ${collectionName}:`, err)
-        if (mountedRef.current) {
-          setError(`Failed to load ${collectionName}`)
+      } catch (err: unknown) {
+        // Auto-cancel errors are noise — ignore them
+        const isAutoCancel = err && typeof err === 'object' && 'isAbort' in err && (err as { isAbort: boolean }).isAbort
+        if (!isAutoCancel) {
+          console.error(`Error fetching ${collectionName}:`, err)
+          if (mountedRef.current) {
+            setError(`Failed to load ${collectionName}`)
+          }
         }
       } finally {
         if (mountedRef.current) setLoading(false)
@@ -97,9 +105,9 @@ export function useCollection<T extends RecordModel>(
 
   const refresh = useCallback(async () => {
     try {
-      const params: Record<string, string> = {}
+      const params: Record<string, unknown> = { requestKey: null }
       if (optionsRef.current.filter) params.filter = optionsRef.current.filter
-      const result = await pb.collection(collectionName).getFullList<T>(params)
+      const result = await pb.collection(collectionName).getFullList<T>(params as Record<string, string>)
       setRecords(result)
     } catch (err) {
       console.error(`Error refreshing ${collectionName}:`, err)

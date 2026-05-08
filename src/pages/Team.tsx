@@ -7,55 +7,93 @@ interface TeamMemberRecord extends RecordModel {
   first_name: string
   last_name: string
   role: string
-  role_code: string
-  boat: string
   boat_tag: string
-  medical_alert: string
-  status: 'CLEARED' | 'PENDING' | 'FLAGGED'
   blood_type: string
   certifications: string
   critical_history: string
   emergency_contact_name: string
   emergency_contact_phone: string
   emergency_contact_relation: string
+  paddler_height: string
+  paddler_weight: string
+  boat_preference: string
+  own_boat: string
+  dob: string
 }
 
 type TeamMemberDraft = Omit<TeamMemberRecord, 'id' | 'collectionId' | 'collectionName' | 'created' | 'updated' | 'expand'>
 
-interface MedKitItem {
-  label: string
-  current: number
-  required: number
-}
-
-const medKitItems: MedKitItem[] = [
-  { label: 'EPI-PENS', current: 8, required: 8 },
-  { label: 'IV SALINE (1L)', current: 4, required: 4 },
-  { label: 'BROAD-SPEC ANTIBIOTICS', current: 2, required: 6 },
-]
 
 function createBlankDraft(): TeamMemberDraft {
   return {
     first_name: '',
     last_name: '',
     role: '',
-    role_code: '',
-    boat: 'RAFT 01',
-    boat_tag: 'LEAD',
-    medical_alert: '',
-    status: 'PENDING',
+    boat_tag: '',
     blood_type: '',
     certifications: '',
     critical_history: '',
     emergency_contact_name: '',
     emergency_contact_phone: '',
     emergency_contact_relation: '',
+    paddler_height: '',
+    paddler_weight: '',
+    boat_preference: '',
+    own_boat: '',
+    dob: '',
   }
 }
 
-const BOAT_OPTIONS = ['RAFT 01', 'RAFT 02', 'RAFT 03', 'RAFT 04'] as const
-const BOAT_TAG_OPTIONS = ['LEAD', 'SUPPLY', 'KITCHEN', 'TAIL'] as const
-const STATUS_OPTIONS: TeamMemberRecord['status'][] = ['CLEARED', 'PENDING', 'FLAGGED']
+// Compute age (in whole years) from a DOB string. Supports DD/MM/YYYY, ISO YYYY-MM-DD,
+// DD-MM-YYYY, DD.MM.YYYY, "17 Dec 1972", etc. Returns null if unparseable.
+function computeAge(dob: string): number | null {
+  const raw = (dob || '').trim()
+  if (!raw) return null
+
+  let day: number | null = null, month: number | null = null, year: number | null = null
+
+  // ISO: YYYY-MM-DD or YYYY/MM/DD
+  let m = raw.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/)
+  if (m) { year = +m[1]; month = +m[2]; day = +m[3] }
+  // DD/MM/YYYY style (day-first)
+  if (!year) {
+    m = raw.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/)
+    if (m) {
+      day = +m[1]; month = +m[2]
+      year = m[3].length === 2 ? 1900 + +m[3] : +m[3]
+    }
+  }
+  // "17 Dec 1972" / "17 December 1972"
+  if (!year) {
+    const months: Record<string, number> = {
+      jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3, apr: 4, april: 4,
+      may: 5, jun: 6, june: 6, jul: 7, july: 7, aug: 8, august: 8,
+      sep: 9, sept: 9, september: 9, oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12,
+    }
+    m = raw.match(/^(\d{1,2})\s+([A-Za-z]+),?\s+(\d{2,4})$/)
+    if (m && months[m[2].toLowerCase()]) {
+      day = +m[1]; month = months[m[2].toLowerCase()]
+      year = m[3].length === 2 ? 1900 + +m[3] : +m[3]
+    }
+    if (!year) {
+      m = raw.match(/^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{2,4})$/)
+      if (m && months[m[1].toLowerCase()]) {
+        day = +m[2]; month = months[m[1].toLowerCase()]
+        year = m[3].length === 2 ? 1900 + +m[3] : +m[3]
+      }
+    }
+  }
+
+  if (year == null || month == null || day == null) return null
+  if (year < 1900 || month < 1 || month > 12 || day < 1 || day > 31) return null
+
+  const today = new Date()
+  let age = today.getFullYear() - year
+  const monthDiff = today.getMonth() + 1 - month
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < day)) age--
+  if (age < 0 || age > 130) return null
+  return age
+}
 
 const inputClasses =
   'w-full bg-surface-container-lowest text-on-surface font-mono text-sm border-b-2 border-outline-variant/30 focus:border-primary focus:outline-none px-2 py-1.5'
@@ -63,6 +101,8 @@ const selectClasses =
   'w-full bg-surface-container-lowest text-on-surface font-mono text-sm border-b-2 border-outline-variant/30 focus:border-primary focus:outline-none px-2 py-1.5 appearance-none cursor-pointer'
 const textareaClasses =
   'w-full bg-surface-container-lowest text-on-surface font-mono text-sm border-b-2 border-outline-variant/30 focus:border-primary focus:outline-none px-2 py-1.5 resize-y min-h-[60px]'
+
+const BOAT_PREFERENCE_OPTIONS = ['Play', 'Half Slice', 'Full Volume'] as const
 
 export default function Team() {
   const { records: teamMembers, loading, create, update, remove } = useCollection<TeamMemberRecord>('team_members')
@@ -72,6 +112,8 @@ export default function Team() {
   const [isCreating, setIsCreating] = useState(false)
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [viewMode, setViewMode] = useState<'manifest' | 'boatType'>('manifest')
+  const [chartCollapsed, setChartCollapsed] = useState(false)
 
   const toggleRow = (id: string) => {
     if (editingId === id) return
@@ -85,17 +127,18 @@ export default function Team() {
       first_name: member.first_name,
       last_name: member.last_name,
       role: member.role,
-      role_code: member.role_code,
-      boat: member.boat,
       boat_tag: member.boat_tag,
-      medical_alert: member.medical_alert,
-      status: member.status,
       blood_type: member.blood_type,
       certifications: member.certifications,
       critical_history: member.critical_history,
       emergency_contact_name: member.emergency_contact_name,
       emergency_contact_phone: member.emergency_contact_phone,
       emergency_contact_relation: member.emergency_contact_relation,
+      paddler_height: member.paddler_height ?? '',
+      paddler_weight: member.paddler_weight ?? '',
+      boat_preference: member.boat_preference ?? '',
+      own_boat: member.own_boat ?? '',
+      dob: member.dob ?? '',
     })
   }
 
@@ -154,21 +197,35 @@ export default function Team() {
 
   // Dynamic stats
   const totalMembers = teamMembers.length
-  const clearedCount = teamMembers.filter((m) => m.status === 'CLEARED').length
-  const clearancePct = totalMembers > 0 ? Math.round((clearedCount / totalMembers) * 100) : 0
-
-  // Dynamic boat assignments
-  const boatCounts = (['RAFT 01', 'RAFT 02', 'RAFT 03', 'RAFT 04'] as const).map((boat) => {
-    const members = teamMembers.filter((m) => m.boat === boat)
-    const tag = members.length > 0 ? members[0].boat_tag : { 'RAFT 01': 'LEAD', 'RAFT 02': 'SUPPLY', 'RAFT 03': 'KITCHEN', 'RAFT 04': 'TAIL' }[boat]
-    return { boat, tag, count: members.length }
-  })
-  const activeBoats = boatCounts.filter((b) => b.count > 0).length
 
   // Combine real records with the in-progress new member for rendering
   const renderMembers: Array<TeamMemberRecord | { id: '__new__'; _isNew: true }> = isCreating
     ? [...teamMembers, { id: '__new__' as const, _isNew: true as const }]
     : teamMembers
+
+  // Group paddlers by boat preference (direct value match — populated from dropdown)
+  type BoatGroup = 'Play' | 'Half Slice' | 'Full Volume' | 'Unassigned'
+
+  const grouped: Record<BoatGroup, TeamMemberRecord[]> = {
+    'Play': [],
+    'Half Slice': [],
+    'Full Volume': [],
+    'Unassigned': [],
+  }
+  teamMembers.forEach((m) => {
+    const pref = m.boat_preference as BoatGroup
+    if (pref === 'Play' || pref === 'Half Slice' || pref === 'Full Volume') {
+      grouped[pref].push(m)
+    } else {
+      grouped['Unassigned'].push(m)
+    }
+  })
+
+  const groupConfig: Array<{ key: Exclude<BoatGroup, 'Unassigned'>; icon: string; description: string }> = [
+    { key: 'Play', icon: 'sports_esports', description: 'Playboats — short, low-volume, freestyle' },
+    { key: 'Half Slice', icon: 'waves', description: 'Half-slice — playable river-runners with sliced sterns' },
+    { key: 'Full Volume', icon: 'kayaking', description: 'Full-volume creekers and river-runners' },
+  ]
 
   if (loading) {
     return (
@@ -194,31 +251,6 @@ export default function Team() {
             <span className="material-symbols-outlined text-base">inventory_2</span>
             Asset Allocation
           </button>
-          <button className="w-full flex items-center gap-3 px-3 py-2.5 text-on-surface-variant font-label text-xs uppercase tracking-widest hover:text-on-surface hover:bg-surface-container transition-colors text-left">
-            <span className="material-symbols-outlined text-base">emergency</span>
-            Emergency Protocols
-          </button>
-        </div>
-
-        {/* Boat Assignments Summary */}
-        <div className="flex-1 border-t border-outline-variant/20 px-3 py-4">
-          <h3 className="tactical-label px-2 mb-3">Boat Assignments</h3>
-          <div className="space-y-0">
-            {boatCounts.map((b) => (
-              <div
-                key={b.boat}
-                className="flex items-center justify-between px-2 py-1.5 border-l border-outline-variant/30"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-[10px] tracking-wider text-outline">{b.boat}</span>
-                  <span className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
-                    {b.tag}
-                  </span>
-                </div>
-                <span className="font-mono text-[10px] text-on-surface">{b.count}</span>
-              </div>
-            ))}
-          </div>
         </div>
       </aside>
 
@@ -234,36 +266,247 @@ export default function Team() {
           </div>
 
           {/* Personnel Stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="surface-card-elevated">
               <span className="tactical-label">Total Personnel</span>
               <p className="font-mono text-3xl text-on-surface mt-1 leading-none">
                 {String(totalMembers).padStart(2, '0')} <span className="text-lg text-on-surface-variant">/ 16</span>
               </p>
             </div>
-            <div className="surface-card-elevated">
-              <span className="tactical-label">Medical Clearance</span>
-              <p className="font-mono text-3xl text-on-surface mt-1 leading-none">
-                {clearancePct}<span className="text-lg text-on-surface-variant">%</span>
-              </p>
-            </div>
-            <div className="surface-card-elevated hidden sm:block">
-              <span className="tactical-label">Boats Assigned</span>
-              <p className="font-mono text-3xl text-on-surface mt-1 leading-none">
-                {String(activeBoats).padStart(2, '0')} <span className="text-lg text-on-surface-variant">active</span>
-              </p>
-            </div>
           </div>
 
+          {/* Boat Type Breakdown — inline on screens under xl (sidebar version covers xl+) */}
+          <div className="surface-card xl:hidden">
+            <button
+              onClick={() => setChartCollapsed((c) => !c)}
+              className="w-full flex items-center gap-2 text-left"
+            >
+              <span className="material-symbols-outlined text-base text-tertiary">bar_chart</span>
+              <h3 className="font-display text-xs font-bold text-primary uppercase tracking-wider flex-1">
+                Boat Type Breakdown
+              </h3>
+              <span className={`material-symbols-outlined text-base text-on-surface-variant transition-transform ${chartCollapsed ? '' : 'rotate-180'}`}>
+                expand_more
+              </span>
+            </button>
+            {!chartCollapsed && (() => {
+              const chartRows: Array<{ key: BoatGroup; count: number; color: string }> = [
+                { key: 'Play', count: grouped['Play'].length, color: 'bg-tertiary' },
+                { key: 'Half Slice', count: grouped['Half Slice'].length, color: 'bg-primary' },
+                { key: 'Full Volume', count: grouped['Full Volume'].length, color: 'bg-tertiary-container' },
+                { key: 'Unassigned', count: grouped['Unassigned'].length, color: 'bg-outline-variant/40' },
+              ]
+              const max = Math.max(1, ...chartRows.map((r) => r.count))
+              return (
+                <div className="space-y-2.5 mt-3">
+                  {chartRows.map((row) => {
+                    const pct = totalMembers > 0 ? Math.round((row.count / totalMembers) * 100) : 0
+                    const widthPct = (row.count / max) * 100
+                    return (
+                      <div key={row.key}>
+                        <div className="flex items-baseline justify-between mb-1">
+                          <span className="font-label text-[10px] text-on-surface-variant uppercase tracking-wider">
+                            {row.key}
+                          </span>
+                          <div className="flex items-baseline gap-1.5">
+                            <span className="font-mono text-sm text-on-surface">
+                              {String(row.count).padStart(2, '0')}
+                            </span>
+                            <span className="font-mono text-[9px] text-outline">
+                              {pct}%
+                            </span>
+                          </div>
+                        </div>
+                        <div className="h-2 bg-surface-container-highest overflow-hidden">
+                          <div
+                            className={`h-full ${row.color} transition-all`}
+                            style={{ width: `${widthPct}%` }}
+                          />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
+          </div>
+
+          {/* View Toggle */}
+          <div className="flex items-center gap-1 bg-surface-container-lowest p-1 w-fit">
+            <button
+              onClick={() => setViewMode('manifest')}
+              className={`flex items-center gap-2 px-3 py-1.5 font-label text-xs uppercase tracking-widest transition-colors ${
+                viewMode === 'manifest'
+                  ? 'bg-surface-container-high text-on-surface'
+                  : 'text-on-surface-variant hover:text-on-surface'
+              }`}
+            >
+              <span className="material-symbols-outlined text-base">table_rows</span>
+              Manifest
+            </button>
+            <button
+              onClick={() => setViewMode('boatType')}
+              className={`flex items-center gap-2 px-3 py-1.5 font-label text-xs uppercase tracking-widest transition-colors ${
+                viewMode === 'boatType'
+                  ? 'bg-surface-container-high text-on-surface'
+                  : 'text-on-surface-variant hover:text-on-surface'
+              }`}
+            >
+              <span className="material-symbols-outlined text-base">kayaking</span>
+              By Boat Type
+            </button>
+          </div>
+
+          {/* Grouped View — By Boat Type */}
+          {viewMode === 'boatType' && (
+            <div className="space-y-4">
+              {groupConfig.map((group) => {
+                const members = grouped[group.key]
+                return (
+                  <div key={group.key} className="surface-card p-0 overflow-hidden">
+                    {/* Group Header */}
+                    <div className="flex items-center gap-3 px-4 py-3 bg-surface-container-highest border-b border-outline-variant/20">
+                      <span className="material-symbols-outlined text-tertiary">{group.icon}</span>
+                      <div className="flex-1">
+                        <h3 className="font-display text-sm font-bold text-primary uppercase tracking-wider">
+                          {group.key}
+                        </h3>
+                        <p className="tactical-label text-[9px] mt-0.5 normal-case tracking-normal">
+                          {group.description}
+                        </p>
+                      </div>
+                      <span className="font-mono text-2xl text-on-surface">
+                        {String(members.length).padStart(2, '0')}
+                      </span>
+                    </div>
+
+                    {/* Member Cards */}
+                    {members.length === 0 ? (
+                      <div className="px-4 py-6 text-center">
+                        <p className="tactical-label text-on-surface-variant">No paddlers in this group</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-px bg-outline-variant/10">
+                        {members.map((m) => (
+                          <div key={m.id} className="bg-surface-container-lowest p-4">
+                            <div className="flex items-start gap-3">
+                              <div className="w-9 h-9 bg-surface-container-highest flex items-center justify-center flex-shrink-0">
+                                <span className="font-mono text-xs text-on-surface-variant">
+                                  {(m.first_name[0] || '?')}{(m.last_name[0] || '?')}
+                                </span>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="font-display text-sm font-semibold text-on-surface uppercase tracking-wider truncate">
+                                  {m.last_name || '---'}, {m.first_name || '---'}
+                                </p>
+                                <p className="tactical-label mt-0.5">
+                                  {m.role || '---'}
+                                  {m.boat_tag && <span className="text-tertiary ml-2">[{m.boat_tag}]</span>}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 pt-3 border-t border-outline-variant/10">
+                              <div>
+                                <span className="tactical-label text-[9px]">Height</span>
+                                <p className="font-mono text-xs text-on-surface mt-0.5">
+                                  {m.paddler_height || '---'}
+                                </p>
+                              </div>
+                              <div>
+                                <span className="tactical-label text-[9px]">Weight</span>
+                                <p className="font-mono text-xs text-on-surface mt-0.5">
+                                  {m.paddler_weight || '---'}
+                                </p>
+                              </div>
+                              <div className="col-span-2">
+                                <span className="tactical-label text-[9px]">Boat Choice</span>
+                                <p className="font-mono text-xs text-on-surface mt-0.5">
+                                  {m.boat_preference || '---'}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+
+              {/* Unassigned */}
+              {grouped['Unassigned'].length > 0 && (
+                <div className="surface-card p-0 overflow-hidden">
+                  <div className="flex items-center gap-3 px-4 py-3 bg-surface-container-highest border-b border-outline-variant/20">
+                    <span className="material-symbols-outlined text-on-surface-variant">help</span>
+                    <div className="flex-1">
+                      <h3 className="font-display text-sm font-bold text-on-surface-variant uppercase tracking-wider">
+                        Unassigned
+                      </h3>
+                      <p className="tactical-label text-[9px] mt-0.5 normal-case tracking-normal">
+                        Edit the paddler and pick a Boat Preference to assign them to a group
+                      </p>
+                    </div>
+                    <span className="font-mono text-2xl text-on-surface-variant">
+                      {String(grouped['Unassigned'].length).padStart(2, '0')}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-px bg-outline-variant/10">
+                    {grouped['Unassigned'].map((m) => (
+                      <div key={m.id} className="bg-surface-container-lowest p-4">
+                        <div className="flex items-start gap-3">
+                          <div className="w-9 h-9 bg-surface-container-highest flex items-center justify-center flex-shrink-0">
+                            <span className="font-mono text-xs text-on-surface-variant">
+                              {(m.first_name[0] || '?')}{(m.last_name[0] || '?')}
+                            </span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-display text-sm font-semibold text-on-surface uppercase tracking-wider truncate">
+                              {m.last_name || '---'}, {m.first_name || '---'}
+                            </p>
+                            <p className="tactical-label mt-0.5">
+                              {m.role || '---'}
+                              {m.boat_tag && <span className="text-tertiary ml-2">[{m.boat_tag}]</span>}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 pt-3 border-t border-outline-variant/10">
+                          <div>
+                            <span className="tactical-label text-[9px]">Height</span>
+                            <p className="font-mono text-xs text-on-surface mt-0.5">
+                              {m.paddler_height || '---'}
+                            </p>
+                          </div>
+                          <div>
+                            <span className="tactical-label text-[9px]">Weight</span>
+                            <p className="font-mono text-xs text-on-surface mt-0.5">
+                              {m.paddler_weight || '---'}
+                            </p>
+                          </div>
+                          <div className="col-span-2">
+                            <span className="tactical-label text-[9px]">Boat Choice</span>
+                            <p className="font-mono text-xs text-on-surface mt-0.5">
+                              {m.boat_preference || '---'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Team Manifest Table */}
+          {viewMode === 'manifest' && (
           <div className="surface-card p-0 overflow-hidden">
             {/* Table Header */}
-            <div className="hidden md:grid grid-cols-[1fr_60px_140px_180px_100px_48px] gap-0 px-4 py-3 bg-surface-container-highest border-b border-outline-variant/20">
+            <div className="hidden md:grid grid-cols-[1fr_130px_130px_120px_90px_48px] gap-0 px-4 py-3 bg-surface-container-highest border-b border-outline-variant/20">
               <span className="tactical-label">Name</span>
               <span className="tactical-label">Role</span>
-              <span className="tactical-label">Boat Assignment</span>
-              <span className="tactical-label">Medical Alerts</span>
-              <span className="tactical-label">Review</span>
+              <span className="tactical-label">Boater Nickname</span>
+              <span className="tactical-label">Boat Pref</span>
+              <span className="tactical-label">Own Boat</span>
               <span />
             </div>
 
@@ -278,17 +521,18 @@ export default function Team() {
                     first_name: (entry as TeamMemberRecord).first_name,
                     last_name: (entry as TeamMemberRecord).last_name,
                     role: (entry as TeamMemberRecord).role,
-                    role_code: (entry as TeamMemberRecord).role_code,
-                    boat: (entry as TeamMemberRecord).boat,
                     boat_tag: (entry as TeamMemberRecord).boat_tag,
-                    medical_alert: (entry as TeamMemberRecord).medical_alert,
-                    status: (entry as TeamMemberRecord).status,
                     blood_type: (entry as TeamMemberRecord).blood_type,
                     certifications: (entry as TeamMemberRecord).certifications,
                     critical_history: (entry as TeamMemberRecord).critical_history,
                     emergency_contact_name: (entry as TeamMemberRecord).emergency_contact_name,
                     emergency_contact_phone: (entry as TeamMemberRecord).emergency_contact_phone,
                     emergency_contact_relation: (entry as TeamMemberRecord).emergency_contact_relation,
+                    paddler_height: (entry as TeamMemberRecord).paddler_height ?? '',
+                    paddler_weight: (entry as TeamMemberRecord).paddler_weight ?? '',
+                    boat_preference: (entry as TeamMemberRecord).boat_preference ?? '',
+                    own_boat: (entry as TeamMemberRecord).own_boat ?? '',
+                    dob: (entry as TeamMemberRecord).dob ?? '',
                   }
 
               const displayData = editingId === memberId && editDraft ? editDraft : member
@@ -297,7 +541,7 @@ export default function Team() {
                 <div key={memberId}>
                   {/* Row */}
                   <div
-                    className={`grid grid-cols-1 md:grid-cols-[1fr_60px_140px_180px_100px_48px] gap-2 md:gap-0 items-center px-4 py-3 border-b border-outline-variant/10 cursor-pointer hover:bg-surface-container-high/50 transition-colors ${
+                    className={`grid grid-cols-1 md:grid-cols-[1fr_130px_130px_120px_90px_48px] gap-2 md:gap-0 items-center px-4 py-3 border-b border-outline-variant/10 cursor-pointer hover:bg-surface-container-high/50 transition-colors ${
                       idx % 2 === 0 ? 'bg-surface-container-low' : 'bg-surface-container-lowest'
                     }`}
                     onClick={() => toggleRow(memberId)}
@@ -317,45 +561,53 @@ export default function Team() {
                       </div>
                     </div>
 
-                    {/* Role Code */}
+                    {/* Role */}
                     <span className="hidden md:block font-mono text-xs text-on-surface-variant">
-                      {displayData.role_code || '---'}
+                      {displayData.role || '---'}
                     </span>
 
-                    {/* Boat */}
-                    <div className="hidden md:flex items-center gap-2">
-                      <span className="font-mono text-xs text-on-surface">{displayData.boat}</span>
-                      <span className="px-1.5 py-0.5 bg-surface-container-highest font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
-                        {displayData.boat_tag}
-                      </span>
+                    {/* Boater Nickname */}
+                    <div className="hidden md:block">
+                      {displayData.boat_tag ? (
+                        <span className="px-1.5 py-0.5 bg-surface-container-highest font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
+                          {displayData.boat_tag}
+                        </span>
+                      ) : (
+                        <span className="font-mono text-xs text-outline">---</span>
+                      )}
                     </div>
 
-                    {/* Medical Alerts */}
+                    {/* Boat Preference */}
                     <div className="hidden md:block">
-                      <span
-                        className={`font-label text-xs uppercase tracking-widest ${
-                          displayData.medical_alert === 'NONE REPORTED' || displayData.medical_alert === ''
-                            ? 'text-on-surface-variant'
-                            : 'text-tertiary'
-                        }`}
-                      >
-                        {displayData.medical_alert || 'NONE REPORTED'}
-                      </span>
+                      {displayData.boat_preference ? (
+                        <span className="px-1.5 py-0.5 bg-surface-container-highest font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
+                          {displayData.boat_preference}
+                        </span>
+                      ) : (
+                        <span className="font-mono text-xs text-outline">---</span>
+                      )}
                     </div>
 
-                    {/* Review Status */}
+                    {/* Own Boat */}
                     <div className="hidden md:block">
-                      <span
-                        className={`inline-block px-2 py-0.5 font-label text-[10px] uppercase tracking-widest ${
-                          displayData.status === 'CLEARED'
-                            ? 'bg-surface-container-highest text-primary'
-                            : displayData.status === 'FLAGGED'
-                              ? 'bg-error-container text-error'
-                              : 'bg-tertiary-container text-on-tertiary'
-                        }`}
-                      >
-                        {displayData.status}
-                      </span>
+                      {displayData.own_boat === 'Yes' && (
+                        <span className="px-1.5 py-0.5 bg-tertiary-container text-tertiary font-label text-[10px] uppercase tracking-widest">
+                          Yes
+                        </span>
+                      )}
+                      {displayData.own_boat === 'No' && (
+                        <span className="px-1.5 py-0.5 bg-surface-container-highest text-on-surface-variant font-label text-[10px] uppercase tracking-widest">
+                          No
+                        </span>
+                      )}
+                      {displayData.own_boat === 'Maybe' && (
+                        <span className="px-1.5 py-0.5 bg-surface-container-highest text-on-surface-variant font-label text-[10px] uppercase tracking-widest border border-outline-variant/40">
+                          Maybe
+                        </span>
+                      )}
+                      {!displayData.own_boat && (
+                        <span className="font-mono text-xs text-outline">---</span>
+                      )}
                     </div>
 
                     {/* Expand Button */}
@@ -371,21 +623,31 @@ export default function Team() {
 
                     {/* Mobile: condensed info */}
                     <div className="md:hidden flex items-center gap-3 flex-wrap">
-                      <span className="font-mono text-[10px] text-on-surface-variant">
-                        {displayData.boat} [{displayData.boat_tag}]
-                      </span>
-                      <span
-                        className={`font-label text-[10px] uppercase tracking-widest ${
-                          displayData.medical_alert === 'NONE REPORTED' || displayData.medical_alert === ''
-                            ? 'text-on-surface-variant'
-                            : 'text-tertiary'
-                        }`}
-                      >
-                        {displayData.medical_alert || 'NONE REPORTED'}
-                      </span>
-                      <span className="inline-block px-2 py-0.5 bg-surface-container-highest font-label text-[10px] uppercase tracking-widest text-primary">
-                        {displayData.status}
-                      </span>
+                      {displayData.boat_tag && (
+                        <span className="px-1.5 py-0.5 bg-surface-container-highest font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
+                          {displayData.boat_tag}
+                        </span>
+                      )}
+                      {displayData.boat_preference && (
+                        <span className="px-1.5 py-0.5 bg-surface-container-highest font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
+                          {displayData.boat_preference}
+                        </span>
+                      )}
+                      {displayData.own_boat === 'Yes' && (
+                        <span className="px-1.5 py-0.5 bg-tertiary-container text-tertiary font-label text-[10px] uppercase tracking-widest">
+                          Own boat: Yes
+                        </span>
+                      )}
+                      {displayData.own_boat === 'No' && (
+                        <span className="px-1.5 py-0.5 bg-surface-container-highest text-on-surface-variant font-label text-[10px] uppercase tracking-widest">
+                          Own boat: No
+                        </span>
+                      )}
+                      {displayData.own_boat === 'Maybe' && (
+                        <span className="px-1.5 py-0.5 bg-surface-container-highest text-on-surface-variant font-label text-[10px] uppercase tracking-widest border border-outline-variant/40">
+                          Own boat: Maybe
+                        </span>
+                      )}
                       <span
                         className={`material-symbols-outlined text-lg text-on-surface-variant transition-transform ml-auto ${
                           expandedRow === memberId ? 'rotate-180' : ''
@@ -443,12 +705,22 @@ export default function Team() {
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                           <div>
-                            <span className="tactical-label">Blood Type</span>
-                            <p className="font-mono text-sm text-on-surface mt-1">{member.blood_type}</p>
+                            <span className="tactical-label">Date of Birth</span>
+                            <p className="font-mono text-sm text-on-surface mt-1">
+                              {member.dob || '---'}
+                              {(() => {
+                                const age = computeAge(member.dob)
+                                return age != null ? <span className="text-tertiary ml-2">({age} yrs)</span> : null
+                              })()}
+                            </p>
                           </div>
-                          <div className="sm:col-span-1 lg:col-span-3">
+                          <div>
+                            <span className="tactical-label">Blood Type</span>
+                            <p className="font-mono text-sm text-on-surface mt-1">{member.blood_type || '---'}</p>
+                          </div>
+                          <div className="sm:col-span-2 lg:col-span-2">
                             <span className="tactical-label">Certifications</span>
-                            <p className="font-mono text-sm text-on-surface mt-1">{member.certifications}</p>
+                            <p className="font-mono text-sm text-on-surface mt-1">{member.certifications || '---'}</p>
                           </div>
                         </div>
 
@@ -457,6 +729,41 @@ export default function Team() {
                           <p className="font-body text-sm text-on-surface-variant mt-1 leading-relaxed">
                             {member.critical_history}
                           </p>
+                        </div>
+
+                        <div className="mt-4 pt-4 border-t border-outline-variant/20">
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="material-symbols-outlined text-base text-tertiary">straighten</span>
+                            <h3 className="font-display text-sm font-bold text-primary uppercase tracking-wider">
+                              Paddler Specs
+                            </h3>
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                            <div>
+                              <span className="tactical-label">Height</span>
+                              <p className="font-mono text-sm text-on-surface mt-1">
+                                {member.paddler_height || '---'}
+                              </p>
+                            </div>
+                            <div>
+                              <span className="tactical-label">Weight</span>
+                              <p className="font-mono text-sm text-on-surface mt-1">
+                                {member.paddler_weight || '---'}
+                              </p>
+                            </div>
+                            <div>
+                              <span className="tactical-label">Boat Preference</span>
+                              <p className="font-mono text-sm text-on-surface mt-1">
+                                {member.boat_preference || '---'}
+                              </p>
+                            </div>
+                            <div>
+                              <span className="tactical-label">Own Boat</span>
+                              <p className="font-mono text-sm text-on-surface mt-1">
+                                {member.own_boat || '---'}
+                              </p>
+                            </div>
+                          </div>
                         </div>
 
                         <div className="mt-4 pt-4 border-t border-outline-variant/20">
@@ -518,62 +825,14 @@ export default function Team() {
                             />
                           </div>
                           <div>
-                            <label className="tactical-label block mb-1">Role Code</label>
+                            <label className="tactical-label block mb-1">Boater Nickname</label>
                             <input
                               type="text"
                               className={inputClasses}
-                              value={editDraft.role_code}
-                              onChange={(e) => updateDraft('role_code', e.target.value)}
-                            />
-                          </div>
-                        </div>
-
-                        {/* Assignment Fields */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
-                          <div>
-                            <label className="tactical-label block mb-1">Boat Assignment</label>
-                            <select
-                              className={selectClasses}
-                              value={editDraft.boat}
-                              onChange={(e) => updateDraft('boat', e.target.value)}
-                            >
-                              {BOAT_OPTIONS.map((b) => (
-                                <option key={b} value={b}>{b}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="tactical-label block mb-1">Boat Tag</label>
-                            <select
-                              className={selectClasses}
+                              placeholder="Custom tag"
                               value={editDraft.boat_tag}
                               onChange={(e) => updateDraft('boat_tag', e.target.value)}
-                            >
-                              {BOAT_TAG_OPTIONS.map((t) => (
-                                <option key={t} value={t}>{t}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="tactical-label block mb-1">Medical Alert</label>
-                            <input
-                              type="text"
-                              className={inputClasses}
-                              value={editDraft.medical_alert}
-                              onChange={(e) => updateDraft('medical_alert', e.target.value)}
                             />
-                          </div>
-                          <div>
-                            <label className="tactical-label block mb-1">Review Status</label>
-                            <select
-                              className={selectClasses}
-                              value={editDraft.status}
-                              onChange={(e) => updateDraft('status', e.target.value)}
-                            >
-                              {STATUS_OPTIONS.map((s) => (
-                                <option key={s} value={s}>{s}</option>
-                              ))}
-                            </select>
                           </div>
                         </div>
 
@@ -588,6 +847,16 @@ export default function Team() {
                         {/* Medical Fields */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                           <div>
+                            <label className="tactical-label block mb-1">Date of Birth</label>
+                            <input
+                              type="text"
+                              className={inputClasses}
+                              placeholder="DD/MM/YYYY"
+                              value={editDraft.dob}
+                              onChange={(e) => updateDraft('dob', e.target.value)}
+                            />
+                          </div>
+                          <div>
                             <label className="tactical-label block mb-1">Blood Type</label>
                             <input
                               type="text"
@@ -596,7 +865,7 @@ export default function Team() {
                               onChange={(e) => updateDraft('blood_type', e.target.value)}
                             />
                           </div>
-                          <div className="sm:col-span-1 lg:col-span-3">
+                          <div className="sm:col-span-2 lg:col-span-2">
                             <label className="tactical-label block mb-1">Certifications</label>
                             <input
                               type="text"
@@ -615,6 +884,64 @@ export default function Team() {
                             value={editDraft.critical_history}
                             onChange={(e) => updateDraft('critical_history', e.target.value)}
                           />
+                        </div>
+
+                        {/* Paddler Specs */}
+                        <div className="mt-6 pt-4 border-t border-outline-variant/20">
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="material-symbols-outlined text-base text-tertiary">straighten</span>
+                            <h3 className="font-display text-sm font-bold text-primary uppercase tracking-wider">
+                              Paddler Specs
+                            </h3>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div>
+                              <label className="tactical-label block mb-1">Height</label>
+                              <input
+                                type="text"
+                                className={inputClasses}
+                                placeholder="e.g. 5'10&quot; / 178cm"
+                                value={editDraft.paddler_height}
+                                onChange={(e) => updateDraft('paddler_height', e.target.value)}
+                              />
+                            </div>
+                            <div>
+                              <label className="tactical-label block mb-1">Weight</label>
+                              <input
+                                type="text"
+                                className={inputClasses}
+                                placeholder="e.g. 180 lb / 82 kg"
+                                value={editDraft.paddler_weight}
+                                onChange={(e) => updateDraft('paddler_weight', e.target.value)}
+                              />
+                            </div>
+                            <div>
+                              <label className="tactical-label block mb-1">Boat Preference</label>
+                              <select
+                                className={selectClasses}
+                                value={editDraft.boat_preference}
+                                onChange={(e) => updateDraft('boat_preference', e.target.value)}
+                              >
+                                <option value="">— Unassigned —</option>
+                                {BOAT_PREFERENCE_OPTIONS.map((opt) => (
+                                  <option key={opt} value={opt}>{opt}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="tactical-label block mb-1">Own Boat</label>
+                              <select
+                                className={selectClasses}
+                                value={editDraft.own_boat}
+                                onChange={(e) => updateDraft('own_boat', e.target.value)}
+                              >
+                                <option value="">— Unspecified —</option>
+                                <option value="Yes">Yes</option>
+                                <option value="No">No</option>
+                                <option value="Maybe">Maybe</option>
+                              </select>
+                            </div>
+                          </div>
                         </div>
 
                         {/* Emergency Contact */}
@@ -717,84 +1044,81 @@ export default function Team() {
               </button>
             </div>
           </div>
+          )}
         </div>
       </div>
 
       {/* Right Sidebar */}
       <aside className="hidden xl:flex flex-col w-72 flex-shrink-0 bg-surface-container-lowest border-l border-outline-variant/20 overflow-y-auto">
         <div className="p-4 space-y-4">
-          {/* Med-Kit Allocation Plan */}
-          <div className="surface-card space-y-3">
-            <h3 className="tactical-label">Med-Kit Allocation Plan</h3>
-            {medKitItems.map((item) => {
-              const pct = (item.current / item.required) * 100
-              const isFull = item.current >= item.required
-              return (
-                <div key={item.label}>
-                  <div className="flex justify-between items-baseline mb-1">
-                    <span className="font-label text-xs text-on-surface-variant">{item.label}</span>
-                    <span className="font-mono text-xs text-on-surface">
-                      {String(item.current).padStart(2, '0')}/{String(item.required).padStart(2, '0')}
-                    </span>
-                  </div>
-                  <div className="h-1.5 w-full bg-surface-container-highest">
-                    <div
-                      className={`h-full ${isFull ? 'bg-primary' : 'bg-error'}`}
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-
-          {/* Planned Extraction Zone */}
-          <div className="surface-card-elevated border-l-2 border-tertiary">
-            <h3 className="tactical-label">Planned Extraction Zone</h3>
-            <p className="font-mono text-2xl text-on-surface mt-2 leading-none">
-              MILE 130.5
-            </p>
-            <p className="font-label text-xs font-semibold text-tertiary uppercase tracking-widest mt-2">
-              Primary Evac Point
-            </p>
-          </div>
-
-          {/* Comm Plan Status */}
-          <div className="surface-card space-y-3">
-            <h3 className="tactical-label">Comm Plan Status</h3>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-base text-on-surface-variant">satellite_alt</span>
-                <span className="font-mono text-sm text-on-surface">Starlink</span>
-                <span className="ml-auto px-1.5 py-0.5 bg-surface-container-highest font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
-                  Primary
-                </span>
-              </div>
-            </div>
-            <div>
-              <span className="tactical-label">Coverage Verified</span>
-              <p className="font-mono text-2xl text-on-surface mt-1 leading-none">
-                98.4<span className="text-sm text-on-surface-variant">%</span>
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 bg-primary rounded-full" />
-              <span className="tactical-label">
-                Link Status: <span className="text-on-surface">Nominal</span>
-              </span>
-            </div>
-          </div>
-
           {/* Quick Actions */}
           <div className="space-y-2">
             <button className="w-full flex items-center gap-3 px-4 py-3 bg-surface-container-high text-on-surface font-label text-xs uppercase tracking-widest hover:bg-surface-container-highest transition-colors text-left">
               <span className="material-symbols-outlined text-base">print</span>
               Export Manifest
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 bg-surface-container-high text-on-surface font-label text-xs uppercase tracking-widest hover:bg-surface-container-highest transition-colors text-left">
-              <span className="material-symbols-outlined text-base">verified_user</span>
-              Run Med-Check
+          </div>
+
+          {/* Boat Type Breakdown Chart */}
+          <div className="surface-card p-4">
+            <button
+              onClick={() => setChartCollapsed((c) => !c)}
+              className="w-full flex items-center gap-2 text-left"
+            >
+              <span className="material-symbols-outlined text-base text-tertiary">bar_chart</span>
+              <h3 className="font-display text-xs font-bold text-primary uppercase tracking-wider flex-1">
+                Boat Type Breakdown
+              </h3>
+              <span className={`material-symbols-outlined text-base text-on-surface-variant transition-transform ${chartCollapsed ? '' : 'rotate-180'}`}>
+                expand_more
+              </span>
             </button>
+            {!chartCollapsed && (() => {
+              const chartRows: Array<{ key: BoatGroup; count: number; color: string }> = [
+                { key: 'Play', count: grouped['Play'].length, color: 'bg-tertiary' },
+                { key: 'Half Slice', count: grouped['Half Slice'].length, color: 'bg-primary' },
+                { key: 'Full Volume', count: grouped['Full Volume'].length, color: 'bg-tertiary-container' },
+                { key: 'Unassigned', count: grouped['Unassigned'].length, color: 'bg-outline-variant/40' },
+              ]
+              const max = Math.max(1, ...chartRows.map((r) => r.count))
+              return (
+                <div className="space-y-2.5 mt-3">
+                  {chartRows.map((row) => {
+                    const pct = totalMembers > 0 ? Math.round((row.count / totalMembers) * 100) : 0
+                    const widthPct = (row.count / max) * 100
+                    return (
+                      <div key={row.key}>
+                        <div className="flex items-baseline justify-between mb-1">
+                          <span className="font-label text-[10px] text-on-surface-variant uppercase tracking-wider">
+                            {row.key}
+                          </span>
+                          <div className="flex items-baseline gap-1.5">
+                            <span className="font-mono text-sm text-on-surface">
+                              {String(row.count).padStart(2, '0')}
+                            </span>
+                            <span className="font-mono text-[9px] text-outline">
+                              {pct}%
+                            </span>
+                          </div>
+                        </div>
+                        <div className="h-2 bg-surface-container-highest overflow-hidden">
+                          <div
+                            className={`h-full ${row.color} transition-all`}
+                            style={{ width: `${widthPct}%` }}
+                          />
+                        </div>
+                      </div>
+                    )
+                  })}
+                  <div className="pt-3 mt-3 border-t border-outline-variant/20 flex items-baseline justify-between">
+                    <span className="tactical-label">Total</span>
+                    <span className="font-mono text-sm text-on-surface">
+                      {String(totalMembers).padStart(2, '0')}
+                    </span>
+                  </div>
+                </div>
+              )
+            })()}
           </div>
         </div>
       </aside>

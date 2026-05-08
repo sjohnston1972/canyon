@@ -1,0 +1,971 @@
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { Link } from 'react-router-dom'
+import pb from '@/lib/pocketbase'
+import { useCollection } from '@/hooks/useCollection'
+import { waypoints, isMajorRapid } from '@/data/waypoints'
+import type { RecordModel } from 'pocketbase'
+
+// Routes that should auto-link in chat responses
+const APP_ROUTES = ['/map', '/command', '/team', '/gear', '/finances', '/logistics', '/emergency', '/rafting']
+
+interface TeamMemberRecord extends RecordModel {
+  first_name: string
+  last_name: string
+  role: string
+  boat_tag: string
+  blood_type: string
+  certifications: string
+  emergency_contact_name: string
+  emergency_contact_phone: string
+  emergency_contact_relation: string
+  paddler_height: string
+  paddler_weight: string
+  boat_preference: string
+  dob: string
+}
+
+type Role = 'user' | 'assistant'
+interface ChatMessage {
+  role: Role
+  content: string
+}
+
+type Mode = 'free' | 'onboarding'
+
+interface OnboardingStep {
+  field: string
+  prompt: string
+  required: boolean
+  placeholder?: string
+  validate?: (value: string) => string | null // returns error message or null
+  options?: string[] // for guided picks
+}
+
+const ONBOARDING_STEPS: OnboardingStep[] = [
+  {
+    field: 'first_name',
+    prompt: 'Welcome to onboarding. What\'s your **first name**?',
+    required: true,
+    placeholder: 'First name',
+  },
+  {
+    field: 'last_name',
+    prompt: 'Got it. And your **last name**?',
+    required: true,
+    placeholder: 'Last name',
+  },
+  {
+    field: 'dob',
+    prompt: 'What\'s your **date of birth**? (e.g. 17/12/1972 — most formats work)',
+    required: true,
+    placeholder: 'DD/MM/YYYY',
+  },
+  {
+    field: 'boat_tag',
+    prompt: 'A **boater nickname** is a short callsign (e.g. "Kingfisher", "Lead Sweep"). What\'s yours? (or `skip`)',
+    required: false,
+    placeholder: 'Boater nickname',
+  },
+  {
+    field: 'blood_type',
+    prompt: 'Your **blood type**? (e.g. O+, A-, AB-) (or `skip`)',
+    required: false,
+    placeholder: 'Blood type',
+  },
+  {
+    field: 'certifications',
+    prompt: 'Any **paddling qualifications or certifications**? (e.g. "BCU 4 Star, Swiftwater Rescue, WFR") (or `skip`)',
+    required: false,
+    placeholder: 'Certifications',
+  },
+  {
+    field: 'emergency_contact_name',
+    prompt: 'Your **next-of-kin name**? (or `skip`)',
+    required: false,
+    placeholder: 'Next-of-kin name',
+  },
+  {
+    field: 'emergency_contact_phone',
+    prompt: 'Their **phone number**? (or `skip`)',
+    required: false,
+    placeholder: 'Phone number',
+  },
+  {
+    field: 'emergency_contact_relation',
+    prompt: 'Your **relationship** to them? (e.g. spouse, parent) (or `skip`)',
+    required: false,
+    placeholder: 'Relationship',
+  },
+  {
+    field: 'paddler_height',
+    prompt: 'Your **height**? (e.g. 5\'10" or 178cm) (or `skip`)',
+    required: false,
+    placeholder: 'Height',
+  },
+  {
+    field: 'paddler_weight',
+    prompt: 'Your **weight**? (e.g. 180 lb or 82 kg) (or `skip`)',
+    required: false,
+    placeholder: 'Weight',
+  },
+  {
+    field: 'boat_preference',
+    prompt: 'Your **boat preference**? Pick one: `Play`, `Half Slice`, `Full Volume`, or `skip`.',
+    required: false,
+    placeholder: 'Boat preference',
+    options: ['Play', 'Half Slice', 'Full Volume'],
+    validate: (v) => {
+      const valid = ['play', 'half slice', 'full volume', 'skip']
+      return valid.includes(v.trim().toLowerCase()) ? null : 'Pick one: Play, Half Slice, Full Volume, or skip'
+    },
+  },
+  {
+    field: 'own_boat',
+    prompt: 'Are you **taking your own boat**? Pick one: `Yes`, `No`, `Maybe`, or `skip`.',
+    required: false,
+    placeholder: 'Own boat?',
+    options: ['Yes', 'No', 'Maybe'],
+    validate: (v) => {
+      const valid = ['yes', 'y', 'no', 'n', 'maybe', 'm', 'skip']
+      return valid.includes(v.trim().toLowerCase()) ? null : 'Pick one: Yes, No, Maybe, or skip'
+    },
+  },
+]
+
+const SYSTEM_PROMPT = `You are **Hance**, the assistant for the Grand Canyon Expedition Planner — named after the Class 8 rapid at Mile 77. You support a 16-person, 18-day kayaking and rafting expedition down the Grand Canyon (Lee's Ferry to Diamond Creek, ~226 river miles, launching 21 Sept 2027). When asked who you are, introduce yourself as Hance.
+
+PERSONA — IMPORTANT:
+You're a seasoned river guide who's run the Canyon many times. You're warm, dry-witted, and quietly amusing — the kind of voice you'd want around a camp stove at the end of a long day. You don't try too hard to be funny; the humour is in the understatement. A small wry aside or self-aware quip lands well. Never goofy, never breezy, never use exclamation points more than once in a blue moon.
+
+When the topic is **safety, medical, evacuation, hazards, or running consequence drops** (Class 7+) — drop the wit entirely. Be precise, calm, and direct. Lives can depend on this. Save the personality for logistics, planning, kit, finances, history, side hikes, and routine team questions.
+
+You're confident but never arrogant. You'd rather say "I don't know — check /command" than guess. You respect the river. You also respect the user's time, so keep responses tight; nobody wants a four-paragraph answer to "what time is the shuttle".
+
+You can help with questions about:
+- The route (rapids, camps, side hikes, river miles)
+- Famous rapids (Badger, Soap Creek, House Rock, Hance, Horn Creek, Granite, Hermit, Crystal, Lava Falls, Upset, Bedrock, etc.) — running notes are sourced from Jim Michaud's "How To Row The Grand Canyon Rapids" guide
+- Team manifest (16 paddlers — names, roles, boater nicknames, paddler specs, medical notes, emergency contacts)
+- Logistics (shuttles, permits, comms)
+- Finances (shared expedition costs)
+- Kit and equipment
+- Emergency procedures and extraction points (Phantom Ranch, Whitmore Wash, etc.)
+- Whitewater technique, scouting, lines, and safety
+- Rafting terminology and rigging
+
+Where to find specific data in the app:
+- /map — interactive map with all waypoints, rapids, camps
+- /command — day-by-day expedition timeline with rapid running notes and diagrams
+- /team — team manifest with paddler specs and medical info
+- /gear — equipment lists
+- /finances — shared expedition costs
+- /logistics — shuttles, permits, comms plan
+- /emergency — emergency contacts, extraction points, contingencies
+- /rafting — rafting techniques and reference material
+
+IMPORTANT: A "LIVE EXPEDITION DATA" block is appended below with the actual data currently in this user's app (team manifest, rapids, equipment, finances, logistics, emergency info, rafting reference). When answering factual questions ("who's on the team", "what's our budget", "what trauma kits do we carry", etc.) — pull directly from that data. Do NOT just point users to a tab when the answer is in the data block. Only suggest a page when the answer genuinely isn't in the data.
+
+FORMATTING:
+- When you reference an app page, write the path as plain text (e.g. /map, /command, /team, /gear, /finances, /logistics, /emergency, /rafting). The UI will turn these into clickable links automatically — do NOT wrap them in markdown.
+- For external links use standard markdown syntax: [link text](https://...)
+- When a rapid has a hand-drawn diagram available, mention it like this on its own line: \`[diagram:rapid-id]\` (e.g. \`[diagram:crystal]\`, \`[diagram:hance]\`, \`[diagram:lava-falls]\`). The UI will inline the actual image. Available diagrams: soap-creek, house-rock, 24-5-mile, redwall-cavern, unkar, hance, horn-creek, crystal, bedrock, diamond-creek, pearce-ferry.
+- Use **bold** for emphasis and bullets for lists. Keep responses tight.
+
+Be concise and direct. Use technical paddling/whitewater terminology when appropriate.`
+
+export default function ChatBot() {
+  // Live expedition data — used to ground the assistant's responses
+  const { records: teamMembers } = useCollection<TeamMemberRecord>('team_members')
+
+  const [open, setOpen] = useState(false)
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    {
+      role: 'assistant',
+      content: "Hi, I'm **Hance**. Named after the Class 8 at Mile 77 — flatters me a bit, but I'll take it.\n\nAsk me about:\n- The route, rapids, and camps (full Michaud running notes)\n- Team manifest, paddler specs, emergency contacts\n- Logistics, finances, gear\n- Safety, extraction points, contingencies\n- Whitewater technique, scouting, river commands\n\nOr tap **Onboard Yourself** if you're not on the manifest yet. Don't be precious about asking — that's what I'm here for.",
+    },
+  ])
+  const [input, setInput] = useState('')
+  const [sending, setSending] = useState(false)
+  const [mode, setMode] = useState<Mode>('free')
+  const [onboardingStep, setOnboardingStep] = useState(0)
+  const [onboardingData, setOnboardingData] = useState<Record<string, string>>({})
+  const [pendingConfirm, setPendingConfirm] = useState(false)
+  const [hasOnboarded, setHasOnboarded] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('canyon_onboarded') === '1'
+    } catch {
+      return false
+    }
+  })
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Keep keyboard up on mobile during onboarding by refocusing after each interaction
+  const refocusInput = useCallback(() => {
+    if (mode !== 'onboarding') return
+    // Use rAF so the focus runs after React re-render
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus({ preventScroll: true })
+    })
+  }, [mode])
+
+  // Auto-scroll to bottom
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
+  }, [messages, open])
+
+  const appendMessage = (role: Role, content: string) => {
+    setMessages((prev) => [...prev, { role, content }])
+  }
+
+  const startOnboarding = () => {
+    setMode('onboarding')
+    setOnboardingStep(0)
+    setOnboardingData({})
+    setPendingConfirm(false)
+    setMessages([
+      { role: 'assistant', content: 'I\'ll walk you through onboarding so I can add you to the team manifest. **Name and date of birth are required**, everything else is optional — type `skip` to skip an optional question. Type `cancel` at any time to stop.' },
+      { role: 'assistant', content: ONBOARDING_STEPS[0].prompt },
+    ])
+  }
+
+  const cancelOnboarding = () => {
+    setMode('free')
+    setOnboardingStep(0)
+    setOnboardingData({})
+    setPendingConfirm(false)
+    appendMessage('assistant', 'Onboarding cancelled. Ask me anything else!')
+  }
+
+  const submitOnboarding = useCallback(async (data: Record<string, string>) => {
+    try {
+      // Strip empty values; PocketBase fields are all optional except first/last name
+      const payload: Record<string, string> = {
+        first_name: data.first_name || '',
+        last_name: data.last_name || '',
+        role: '',
+        boat_tag: data.boat_tag || '',
+        blood_type: data.blood_type || '',
+        certifications: data.certifications || '',
+        critical_history: '',
+        emergency_contact_name: data.emergency_contact_name || '',
+        emergency_contact_phone: data.emergency_contact_phone || '',
+        emergency_contact_relation: data.emergency_contact_relation || '',
+        paddler_height: data.paddler_height || '',
+        paddler_weight: data.paddler_weight || '',
+        boat_preference: data.boat_preference || '',
+        own_boat: data.own_boat || '',
+        dob: data.dob || '',
+      }
+
+      await pb.collection('team_members').create(payload)
+      appendMessage('assistant', `**${data.first_name} ${data.last_name}** is now in the team manifest. Head over to /team to view or edit your record.`)
+      try { localStorage.setItem('canyon_onboarded', '1') } catch { /* ignore */ }
+      setHasOnboarded(true)
+      setMode('free')
+      setOnboardingStep(0)
+      setOnboardingData({})
+      setPendingConfirm(false)
+    } catch (err) {
+      console.error('Failed to create team member:', err)
+      appendMessage('assistant', `Sorry — I couldn't save you to the manifest. Error: ${err}. You can try again or add yourself manually on the /team page.`)
+      setMode('free')
+      setPendingConfirm(false)
+    }
+  }, [])
+
+  const handleOnboardingInput = useCallback(async (raw: string) => {
+    const trimmed = raw.trim()
+
+    if (trimmed.toLowerCase() === 'cancel') {
+      cancelOnboarding()
+      return
+    }
+
+    if (pendingConfirm) {
+      if (trimmed.toLowerCase() === 'yes' || trimmed.toLowerCase() === 'y' || trimmed.toLowerCase() === 'confirm') {
+        appendMessage('assistant', 'Saving you to the manifest…')
+        await submitOnboarding(onboardingData)
+      } else {
+        appendMessage('assistant', 'OK, I haven\'t saved anything. Type `restart` to begin again, or ask me anything.')
+        setMode('free')
+        setPendingConfirm(false)
+      }
+      return
+    }
+
+    const step = ONBOARDING_STEPS[onboardingStep]
+    const isSkip = trimmed.toLowerCase() === 'skip'
+
+    if (isSkip && step.required) {
+      appendMessage('assistant', `That one is required — please answer: ${step.prompt}`)
+      return
+    }
+
+    if (!isSkip && step.validate) {
+      const err = step.validate(trimmed)
+      if (err) {
+        appendMessage('assistant', err)
+        return
+      }
+    }
+
+    let value = isSkip ? '' : trimmed
+    // Normalize DOB to DD/MM/YYYY
+    if (step.field === 'dob' && value) {
+      value = normalizeDob(value)
+    }
+    // Normalize boat_preference capitalization
+    if (step.field === 'boat_preference' && value) {
+      const lower = value.toLowerCase()
+      if (lower === 'play') value = 'Play'
+      else if (lower === 'half slice') value = 'Half Slice'
+      else if (lower === 'full volume') value = 'Full Volume'
+    }
+    // Normalize own_boat to Yes / No / Maybe
+    if (step.field === 'own_boat' && value) {
+      const lower = value.toLowerCase()
+      if (lower === 'yes' || lower === 'y') value = 'Yes'
+      else if (lower === 'no' || lower === 'n') value = 'No'
+      else if (lower === 'maybe' || lower === 'm') value = 'Maybe'
+    }
+
+    const updated = { ...onboardingData, [step.field]: value }
+    setOnboardingData(updated)
+
+    const next = onboardingStep + 1
+    if (next < ONBOARDING_STEPS.length) {
+      setOnboardingStep(next)
+      appendMessage('assistant', ONBOARDING_STEPS[next].prompt)
+    } else {
+      // Summarize and ask to confirm
+      const summary = ONBOARDING_STEPS
+        .map((s) => `- **${s.field.replace(/_/g, ' ')}**: ${updated[s.field] || '_(skipped)_'}`)
+        .join('\n')
+      appendMessage('assistant', `Here's what I have:\n\n${summary}\n\nShall I save you to the manifest? (yes / no)`)
+      setPendingConfirm(true)
+    }
+  }, [onboardingStep, onboardingData, pendingConfirm, submitOnboarding])
+
+  const sendFreeMessage = async (userText: string) => {
+    setSending(true)
+    try {
+      const newMessages: ChatMessage[] = [...messages, { role: 'user' as Role, content: userText }]
+      setMessages(newMessages)
+
+      // Send full history (excluding system) to API
+      const apiMessages = newMessages.map((m) => ({ role: m.role, content: m.content }))
+
+      // Fetch live data from all relevant collections in parallel
+      const dynamicContext = await buildExpeditionContext(teamMembers)
+
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: apiMessages,
+          system: SYSTEM_PROMPT + dynamicContext,
+        }),
+      })
+
+      const data = await res.json()
+      if (!res.ok) {
+        appendMessage('assistant', `Error: ${data.error || 'Failed to reach the assistant'}`)
+        return
+      }
+      appendMessage('assistant', data.content || '(no response)')
+    } catch (err) {
+      console.error('Chat error:', err)
+      appendMessage('assistant', `Sorry — I couldn't reach the assistant. ${err}`)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const handleSend = async () => {
+    const text = input.trim()
+    if (!text || sending) return
+    setInput('')
+
+    if (mode === 'onboarding') {
+      appendMessage('user', text)
+      await handleOnboardingInput(text)
+      refocusInput()
+      return
+    }
+
+    if (text.toLowerCase() === 'restart' && messages.some((m) => m.content.includes('manifest'))) {
+      startOnboarding()
+      return
+    }
+
+    await sendFreeMessage(text)
+  }
+
+  const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSend()
+    }
+  }
+
+  // Submit a value directly (used by quick-pick tiles)
+  const handleQuickPick = async (value: string) => {
+    if (sending || mode !== 'onboarding') return
+    setInput('')
+    appendMessage('user', value)
+    await handleOnboardingInput(value)
+    refocusInput()
+  }
+
+  // Determine if we should show quick-pick tiles for the current step
+  const currentStep = mode === 'onboarding' && !pendingConfirm ? ONBOARDING_STEPS[onboardingStep] : null
+  const showTiles = currentStep && currentStep.options && currentStep.options.length > 0
+
+  return (
+    <>
+      {/* Floating toggle button */}
+      {!open && (
+        <button
+          onClick={() => setOpen(true)}
+          className="fixed bottom-4 right-4 z-50 w-14 h-14 bg-tertiary-container text-on-tertiary shadow-xl flex items-center justify-center hover:brightness-110 transition-all"
+          aria-label="Open chat assistant"
+        >
+          <span className="material-symbols-outlined text-2xl">chat</span>
+        </button>
+      )}
+
+      {/* Chat panel */}
+      {open && (
+        <div className="fixed bottom-4 right-4 z-50 w-[min(420px,calc(100vw-2rem))] h-[min(640px,calc(100vh-6rem))] bg-surface-container-lowest shadow-2xl border border-outline-variant/30 flex flex-col">
+          {/* Header */}
+          <div className="flex items-center gap-2 px-4 py-3 bg-surface-container-highest border-b border-outline-variant/20">
+            <span className="material-symbols-outlined text-tertiary">smart_toy</span>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-display text-xs font-bold text-primary uppercase tracking-wider">
+                Hance
+              </h3>
+              <p className="tactical-label text-[9px] mt-0.5 normal-case tracking-normal">
+                {mode === 'onboarding' ? 'Onboarding…' : 'Powered by Claude Haiku 4.5'}
+              </p>
+            </div>
+            <button
+              onClick={() => setOpen(false)}
+              className="w-8 h-8 flex items-center justify-center text-on-surface-variant hover:text-on-surface transition-colors"
+              aria-label="Close chat"
+            >
+              <span className="material-symbols-outlined text-lg">close</span>
+            </button>
+          </div>
+
+          {/* Quick actions */}
+          {mode === 'free' && (
+            <div className="px-3 py-2 border-b border-outline-variant/20 flex flex-wrap gap-1.5">
+              <button
+                onClick={startOnboarding}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 font-label text-[10px] uppercase tracking-widest transition-colors ${
+                  hasOnboarded
+                    ? 'bg-surface-container-high text-on-surface hover:bg-tertiary-container hover:text-on-tertiary'
+                    : 'bg-tertiary-container text-on-tertiary animate-attention-pulse hover:brightness-110'
+                }`}
+              >
+                <span className="material-symbols-outlined text-sm">person_add</span>
+                Onboard Yourself
+              </button>
+            </div>
+          )}
+
+          {/* Messages */}
+          <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+            {messages.map((m, i) => (
+              <div
+                key={i}
+                className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                <div
+                  className={`max-w-[85%] px-3 py-2 text-sm leading-relaxed break-words ${
+                    m.role === 'user'
+                      ? 'bg-tertiary-container text-on-tertiary'
+                      : 'bg-surface-container text-on-surface'
+                  }`}
+                >
+                  {renderMessage(m.content, () => setOpen(false))}
+                </div>
+              </div>
+            ))}
+            {sending && (
+              <div className="flex justify-start">
+                <div className="bg-surface-container px-3 py-3 flex items-center gap-1.5 text-tertiary">
+                  <span className="typing-dot" style={{ animationDelay: '0ms' }} />
+                  <span className="typing-dot" style={{ animationDelay: '150ms' }} />
+                  <span className="typing-dot" style={{ animationDelay: '300ms' }} />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Input + onboarding controls */}
+          <div className="border-t border-outline-variant/20 p-3">
+            {mode === 'onboarding' && (
+              <div className="flex items-center justify-between mb-2">
+                <span className="tactical-label">
+                  Step {Math.min(onboardingStep + 1, ONBOARDING_STEPS.length)} of {ONBOARDING_STEPS.length}
+                </span>
+                <button
+                  onClick={cancelOnboarding}
+                  className="font-label text-[10px] text-outline hover:text-error uppercase tracking-widest transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+
+            {/* Quick-pick tiles for option-based or skippable onboarding steps */}
+            {mode === 'onboarding' && showTiles && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {currentStep!.options!.map((opt) => (
+                  <button
+                    key={opt}
+                    onClick={() => handleQuickPick(opt)}
+                    onMouseDown={(e) => e.preventDefault()}
+                    disabled={sending}
+                    className="px-3 py-1.5 bg-tertiary-container text-on-tertiary font-label text-[11px] uppercase tracking-widest hover:brightness-110 transition-all disabled:opacity-50"
+                  >
+                    {opt}
+                  </button>
+                ))}
+                {!currentStep!.required && (
+                  <button
+                    onClick={() => handleQuickPick('skip')}
+                    disabled={sending}
+                    className="px-3 py-1.5 bg-surface-container-high text-on-surface-variant font-label text-[11px] uppercase tracking-widest hover:bg-surface-container-highest transition-colors disabled:opacity-50"
+                  >
+                    Skip
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Skip-only tile for optional non-option questions */}
+            {mode === 'onboarding' && !showTiles && currentStep && !currentStep.required && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                <button
+                  onClick={() => handleQuickPick('skip')}
+                  onMouseDown={(e) => e.preventDefault()}
+                  disabled={sending}
+                  className="px-3 py-1.5 bg-surface-container-high text-on-surface-variant font-label text-[11px] uppercase tracking-widest hover:bg-surface-container-highest transition-colors disabled:opacity-50"
+                >
+                  Skip
+                </button>
+              </div>
+            )}
+
+            {/* Yes/No confirmation tiles */}
+            {mode === 'onboarding' && pendingConfirm && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                <button
+                  onClick={() => handleQuickPick('yes')}
+                  onMouseDown={(e) => e.preventDefault()}
+                  disabled={sending}
+                  className="px-3 py-1.5 bg-tertiary-container text-on-tertiary font-label text-[11px] uppercase tracking-widest hover:brightness-110 transition-all disabled:opacity-50"
+                >
+                  Yes, Save Me
+                </button>
+                <button
+                  onClick={() => handleQuickPick('no')}
+                  onMouseDown={(e) => e.preventDefault()}
+                  disabled={sending}
+                  className="px-3 py-1.5 bg-surface-container-high text-on-surface-variant font-label text-[11px] uppercase tracking-widest hover:bg-error-container hover:text-error transition-colors disabled:opacity-50"
+                >
+                  No, Cancel
+                </button>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <textarea
+                ref={textareaRef}
+                className="flex-1 bg-surface-container-lowest text-on-surface font-mono text-sm border border-outline-variant/30 focus:border-primary focus:outline-none px-2 py-1.5 resize-none"
+                rows={2}
+                value={input}
+                placeholder={
+                  mode === 'onboarding'
+                    ? (pendingConfirm ? 'yes / no' : (ONBOARDING_STEPS[onboardingStep]?.placeholder || 'Type your answer'))
+                    : 'Ask anything…'
+                }
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKey}
+                disabled={sending}
+              />
+              <button
+                onClick={handleSend}
+                onMouseDown={(e) => { if (mode === 'onboarding') e.preventDefault() }}
+                disabled={sending || !input.trim()}
+                className="px-3 bg-primary text-on-primary disabled:opacity-30 hover:brightness-90 transition-colors"
+                aria-label="Send"
+              >
+                <span className="material-symbols-outlined text-base">send</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+// Build a snapshot of all expedition data from PocketBase + static files,
+// formatted as a compact text block to append to the system prompt.
+async function buildExpeditionContext(teamMembers: TeamMemberRecord[]): Promise<string> {
+  // Fetch all collections in parallel — non-fatal if any single one fails.
+  const safeFetch = async <T,>(name: string): Promise<T[]> => {
+    try {
+      return await pb.collection(name).getFullList<T>({ requestKey: null } as never)
+    } catch (err) {
+      console.warn(`Failed to fetch ${name}:`, err)
+      return []
+    }
+  }
+
+  const [
+    equipment,
+    finances,
+    logistics,
+    emergencyContacts,
+    contingencyPlans,
+    extractionPoints,
+    rafts,
+    raftingTerms,
+    traumaKits,
+    raftTypes,
+    riggingTopics,
+    riverCommands,
+    raftingVideos,
+  ] = await Promise.all([
+    safeFetch<any>('equipment'),
+    safeFetch<any>('finances'),
+    safeFetch<any>('logistics_entries'),
+    safeFetch<any>('emergency_contacts'),
+    safeFetch<any>('contingency_plans'),
+    safeFetch<any>('extraction_points'),
+    safeFetch<any>('rafts'),
+    safeFetch<any>('rafting_terms'),
+    safeFetch<any>('trauma_kits'),
+    safeFetch<any>('raft_types'),
+    safeFetch<any>('rigging_topics'),
+    safeFetch<any>('river_commands'),
+    safeFetch<any>('rafting_videos'),
+  ])
+
+  // Team manifest
+  const teamSummary = teamMembers.length === 0
+    ? '(no team members yet)'
+    : teamMembers.map((m) => {
+        const name = `${m.last_name || '?'}, ${m.first_name || '?'}`.trim()
+        const bits: string[] = []
+        if (m.role) bits.push(`role: ${m.role}`)
+        if (m.boat_tag) bits.push(`nickname: ${m.boat_tag}`)
+        if (m.boat_preference) bits.push(`boat: ${m.boat_preference}`)
+        if (m.paddler_height) bits.push(`height: ${m.paddler_height}`)
+        if (m.paddler_weight) bits.push(`weight: ${m.paddler_weight}`)
+        if (m.blood_type) bits.push(`blood: ${m.blood_type}`)
+        if (m.certifications) bits.push(`certs: ${m.certifications}`)
+        if (m.dob) {
+          const age = computeAgeFromDob(m.dob)
+          bits.push(`dob: ${m.dob}${age != null ? ` (age ${age})` : ''}`)
+        }
+        if (m.emergency_contact_name) {
+          const ec = [m.emergency_contact_name, m.emergency_contact_relation, m.emergency_contact_phone].filter(Boolean).join(' / ')
+          bits.push(`next-of-kin: ${ec}`)
+        }
+        return `- ${name}${bits.length ? ' | ' + bits.join(', ') : ''}`
+      }).join('\n')
+
+  // Rapids (from static waypoints data)
+  const majorRapids = waypoints.filter(isMajorRapid)
+  const rapidsSummary = majorRapids.map((w) => {
+    const hasDiagram = w.diagramPath ? ` [diagram available: id=${w.id}]` : ''
+    return `- Mile ${w.riverMile} ${w.name} (Class ${w.difficulty})${w.scout ? ' — scout ' + w.scout : ''}${w.primaryRun ? ', run ' + w.primaryRun : ''}${hasDiagram}`
+  }).join('\n')
+  const allRapidsCount = waypoints.filter(w => w.type === 'rapid').length
+  const campsCount = waypoints.filter(w => w.type === 'camp').length
+
+  const sect = (title: string, items: string) => items ? `\n\n${title}:\n${items}` : ''
+  const list = (arr: any[], formatter: (r: any) => string) =>
+    arr.length === 0 ? '' : arr.map(formatter).join('\n')
+
+  const equipSummary = list(equipment, (r) =>
+    `- ${r.name || '?'}${r.category ? ` (${r.category})` : ''}${r.qty ? ` x${r.qty}` : ''}${r.owner ? ` — owner: ${r.owner}` : ''}${r.notes ? ` — ${r.notes}` : ''}`
+  )
+
+  const financesSummary = list(finances, (r) => {
+    const amount = r.amount != null ? `$${r.amount}` : ''
+    return `- ${r.description || r.name || '?'}${amount ? ` — ${amount}` : ''}${r.paid_by ? ` paid by ${r.paid_by}` : ''}${r.category ? ` [${r.category}]` : ''}`
+  })
+
+  const logisticsSummary = list(logistics, (r) =>
+    `- [${r.type || 'logistics'}] ${r.title || r.name || ''}${r.details ? ' — ' + r.details : ''}${r.date ? ' (' + r.date + ')' : ''}`
+  )
+
+  const contactsSummary = list(emergencyContacts, (r) =>
+    `- ${r.name || '?'}${r.role ? ` (${r.role})` : ''}${r.phone ? ' — ' + r.phone : ''}${r.notes ? ' — ' + r.notes : ''}`
+  )
+
+  const contingencySummary = list(contingencyPlans, (r) =>
+    `- ${r.scenario || r.title || '?'}: ${r.plan || r.action || r.description || ''}`
+  )
+
+  const extractionSummary = list(extractionPoints, (r) =>
+    `- Mile ${r.river_mile ?? '?'} ${r.name || ''}${r.access ? ' — access: ' + r.access : ''}${r.notes ? ' — ' + r.notes : ''}`
+  )
+
+  const raftsSummary = list(rafts, (r) =>
+    `- ${r.name || '?'}${r.tag ? ` [${r.tag}]` : ''}${r.weight_kg ? ` (${r.weight_kg}kg)` : ''}${r.notes ? ' — ' + r.notes : ''}`
+  )
+
+  const termsSummary = list(raftingTerms, (r) =>
+    `- ${r.term || '?'}: ${r.definition || ''}`
+  )
+
+  const kitsSummary = list(traumaKits, (r) =>
+    `- ${r.name || '?'}${r.contents ? ': ' + r.contents : ''}${r.location ? ' (loc: ' + r.location + ')' : ''}`
+  )
+
+  const raftTypesSummary = list(raftTypes, (r) =>
+    `- ${r.name || '?'}${r.description ? ': ' + r.description : ''}${r.use_case ? ' — use: ' + r.use_case : ''}`
+  )
+
+  const riggingSummary = list(riggingTopics, (r) =>
+    `- ${r.title || r.topic || '?'}${r.description ? ': ' + r.description : ''}`
+  )
+
+  const commandsSummary = list(riverCommands, (r) =>
+    `- "${r.command || r.name || '?'}": ${r.meaning || r.description || ''}`
+  )
+
+  const videosSummary = list(raftingVideos, (r) =>
+    `- ${r.title || '?'}${r.url ? ' (' + r.url + ')' : ''}${r.description ? ' — ' + r.description : ''}`
+  )
+
+  return `
+
+---
+LIVE EXPEDITION DATA (use this to answer factual questions; cite specific entries when relevant; do not invent details):
+
+TEAM MANIFEST (${teamMembers.length} paddler${teamMembers.length === 1 ? '' : 's'}):
+${teamSummary}
+
+MAJOR RAPIDS (Class 6+, ${majorRapids.length} of ${allRapidsCount} total rapids; ${campsCount} camps in catalogue):
+${rapidsSummary}` +
+    sect(`EQUIPMENT (${equipment.length})`, equipSummary) +
+    sect(`FINANCES (${finances.length} entries)`, financesSummary) +
+    sect(`LOGISTICS (${logistics.length})`, logisticsSummary) +
+    sect(`EMERGENCY CONTACTS (${emergencyContacts.length})`, contactsSummary) +
+    sect(`CONTINGENCY PLANS (${contingencyPlans.length})`, contingencySummary) +
+    sect(`EXTRACTION POINTS (${extractionPoints.length})`, extractionSummary) +
+    sect(`RAFTS (${rafts.length})`, raftsSummary) +
+    sect(`RAFTING TERMS / GLOSSARY (${raftingTerms.length})`, termsSummary) +
+    sect(`TRAUMA KITS (${traumaKits.length})`, kitsSummary) +
+    sect(`RAFT TYPES (${raftTypes.length})`, raftTypesSummary) +
+    sect(`RIGGING TOPICS (${riggingTopics.length})`, riggingSummary) +
+    sect(`RIVER COMMANDS (${riverCommands.length})`, commandsSummary) +
+    sect(`RAFTING VIDEOS (${raftingVideos.length})`, videosSummary)
+}
+
+// Compute age from any of the DOB formats we accept. Returns null if unparseable.
+function computeAgeFromDob(dob: string): number | null {
+  const raw = (dob || '').trim()
+  if (!raw) return null
+  let day: number | null = null, month: number | null = null, year: number | null = null
+  let m = raw.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/)
+  if (m) { year = +m[1]; month = +m[2]; day = +m[3] }
+  if (!year) {
+    m = raw.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/)
+    if (m) { day = +m[1]; month = +m[2]; year = m[3].length === 2 ? 1900 + +m[3] : +m[3] }
+  }
+  if (!year) {
+    const months: Record<string, number> = {
+      jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3, apr: 4, april: 4,
+      may: 5, jun: 6, june: 6, jul: 7, july: 7, aug: 8, august: 8,
+      sep: 9, sept: 9, september: 9, oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12,
+    }
+    m = raw.match(/^(\d{1,2})\s+([A-Za-z]+),?\s+(\d{2,4})$/)
+    if (m && months[m[2].toLowerCase()]) {
+      day = +m[1]; month = months[m[2].toLowerCase()]; year = m[3].length === 2 ? 1900 + +m[3] : +m[3]
+    }
+    if (!year) {
+      m = raw.match(/^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{2,4})$/)
+      if (m && months[m[1].toLowerCase()]) {
+        day = +m[2]; month = months[m[1].toLowerCase()]; year = m[3].length === 2 ? 1900 + +m[3] : +m[3]
+      }
+    }
+  }
+  if (year == null || month == null || day == null) return null
+  if (year < 1900 || month < 1 || month > 12 || day < 1 || day > 31) return null
+  const today = new Date()
+  let age = today.getFullYear() - year
+  const monthDiff = today.getMonth() + 1 - month
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < day)) age--
+  if (age < 0 || age > 130) return null
+  return age
+}
+
+// Normalize a date string to DD/MM/YYYY. Falls back to the original input if we can't parse it.
+function normalizeDob(input: string): string {
+  const raw = input.trim()
+  if (!raw) return raw
+
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const fmt = (d: number, m: number, y: number) => `${pad(d)}/${pad(m)}/${y}`
+
+  // ISO: YYYY-MM-DD or YYYY/MM/DD
+  let m = raw.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/)
+  if (m) return fmt(+m[3], +m[2], +m[1])
+
+  // DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY (assume day-first since user is UK)
+  m = raw.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/)
+  if (m) {
+    const year = m[3].length === 2 ? 1900 + +m[3] : +m[3]
+    return fmt(+m[1], +m[2], year)
+  }
+
+  // "17 Dec 1972", "17 December 1972", "Dec 17 1972", "December 17, 1972"
+  const months: Record<string, number> = {
+    jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3, apr: 4, april: 4,
+    may: 5, jun: 6, june: 6, jul: 7, july: 7, aug: 8, august: 8,
+    sep: 9, sept: 9, september: 9, oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12,
+  }
+  // day month year
+  m = raw.match(/^(\d{1,2})\s+([A-Za-z]+),?\s+(\d{2,4})$/)
+  if (m && months[m[2].toLowerCase()]) {
+    const year = m[3].length === 2 ? 1900 + +m[3] : +m[3]
+    return fmt(+m[1], months[m[2].toLowerCase()], year)
+  }
+  // month day year
+  m = raw.match(/^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{2,4})$/)
+  if (m && months[m[1].toLowerCase()]) {
+    const year = m[3].length === 2 ? 1900 + +m[3] : +m[3]
+    return fmt(+m[2], months[m[1].toLowerCase()], year)
+  }
+
+  // Fallback: keep what the user typed
+  return raw
+}
+
+// Available diagrams (filename in /public/diagrams/)
+const KNOWN_DIAGRAMS = new Set([
+  'soap-creek', 'house-rock', '24-5-mile', 'redwall-cavern',
+  'unkar', 'hance', 'horn-creek', 'crystal', 'bedrock',
+  'diamond-creek', 'pearce-ferry',
+])
+
+// Render a chat message: split into blocks (paragraphs + diagrams), inline-format each block.
+// onLinkClick is called whenever any internal app-route link is clicked (used to close the chat panel).
+function renderMessage(text: string, onLinkClick?: () => void): React.ReactNode {
+  // Pull out diagram references anywhere in the text (Claude often emits them inline)
+  const blocks: Array<{ kind: 'text' | 'diagram'; value: string }> = []
+  const diagramRe = /\[diagram:([a-z0-9-]+)\]/gi
+  let lastIdx = 0
+  let m: RegExpExecArray | null
+  while ((m = diagramRe.exec(text)) !== null) {
+    if (m.index > lastIdx) {
+      blocks.push({ kind: 'text', value: text.slice(lastIdx, m.index) })
+    }
+    blocks.push({ kind: 'diagram', value: m[1].toLowerCase() })
+    lastIdx = m.index + m[0].length
+  }
+  if (lastIdx < text.length) {
+    blocks.push({ kind: 'text', value: text.slice(lastIdx) })
+  }
+
+  return (
+    <>
+      {blocks.map((b, i) => {
+        if (b.kind === 'diagram') {
+          if (!KNOWN_DIAGRAMS.has(b.value)) return null
+          return (
+            <div key={i} className="my-2 bg-white p-1.5">
+              <img
+                src={`/diagrams/${b.value}.png`}
+                alt={`Diagram of ${b.value}`}
+                className="w-full h-auto"
+                loading="lazy"
+              />
+              <p className="text-[9px] text-outline mt-1 px-1 uppercase tracking-wider">
+                {b.value.replace(/-/g, ' ')} — Jim Michaud
+              </p>
+            </div>
+          )
+        }
+        return <span key={i} className="whitespace-pre-wrap">{renderInline(b.value, onLinkClick)}</span>
+      })}
+    </>
+  )
+}
+
+// Inline formatting. We normalize first (strip any markdown wrapping around app routes),
+// then a single regex pass handles markdown links, bare app routes, bold, and code.
+function renderInline(text: string, onLinkClick?: () => void): React.ReactNode {
+  const routeNames = 'map|command|team|gear|finances|logistics|emergency|rafting'
+
+  // Pre-normalize: strip backticks, bold (**), italics (*) wrapped around app routes.
+  // Claude sometimes outputs `**/team**`, `` `/team` ``, etc. — turn them into bare /team
+  // so the route pattern below catches them as Links.
+  const normalized = text
+    .replace(new RegExp(`\\*\\*\\s*(/(?:${routeNames}))\\s*\\*\\*`, 'g'), '$1')
+    .replace(new RegExp(`\\*\\s*(/(?:${routeNames}))\\s*\\*`, 'g'), '$1')
+    .replace(new RegExp('`(/(?:' + routeNames + '))`', 'g'), '$1')
+
+  const parts: React.ReactNode[] = []
+  // Order: markdown link → app route → bold → code
+  const regex = new RegExp(
+    [
+      '\\[([^\\]]+)\\]\\(([^)]+)\\)',                   // 1: link text, 2: link url
+      `(/(?:${routeNames}))(?![\\w/-])`,                // 3: bare app route
+      '\\*\\*([^*\\n]+)\\*\\*',                         // 4: bold (single-line)
+      '`([^`\\n]+)`',                                   // 5: code (single-line)
+    ].join('|'),
+    'g'
+  )
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+  let key = 0
+  while ((match = regex.exec(normalized)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(normalized.slice(lastIndex, match.index))
+    }
+    if (match[1] && match[2]) {
+      const url = match[2]
+      const isInternal = APP_ROUTES.includes(url)
+      if (isInternal) {
+        parts.push(
+          <Link key={key++} to={url} onClick={onLinkClick} className="text-tertiary underline underline-offset-2 hover:brightness-110">
+            {match[1]}
+          </Link>
+        )
+      } else {
+        parts.push(
+          <a key={key++} href={url} target="_blank" rel="noopener noreferrer" className="text-tertiary underline underline-offset-2 hover:brightness-110 break-all">
+            {match[1]}
+          </a>
+        )
+      }
+    } else if (match[3]) {
+      parts.push(
+        <Link key={key++} to={match[3]} onClick={onLinkClick} className="text-tertiary underline underline-offset-2 hover:brightness-110 font-mono font-semibold">
+          {match[3]}
+        </Link>
+      )
+    } else if (match[4]) {
+      parts.push(<strong key={key++} className="font-semibold text-primary">{match[4]}</strong>)
+    } else if (match[5]) {
+      parts.push(<code key={key++} className="font-mono text-xs bg-surface-container-highest px-1 py-0.5">{match[5]}</code>)
+    }
+    lastIndex = regex.lastIndex
+  }
+  if (lastIndex < normalized.length) {
+    parts.push(normalized.slice(lastIndex))
+  }
+  return parts
+}

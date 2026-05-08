@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { useTheme } from '@/hooks/useTheme'
+import ChatBot from '@/components/chat/ChatBot'
 
 const navItems = [
   { to: '/command', label: 'Timeline', icon: 'explore' },
@@ -10,6 +11,7 @@ const navItems = [
   { to: '/finances', label: 'Finances', icon: 'payments' },
   { to: '/logistics', label: 'Logistics', icon: 'local_shipping' },
   { to: '/emergency', label: 'Safety', icon: 'emergency' },
+  { to: '/rafting', label: 'Rafting', icon: 'rowing' },
 ]
 
 export default function AppShell() {
@@ -125,6 +127,9 @@ export default function AppShell() {
       <footer className="hidden md:flex flex-shrink-0 bg-surface-container-lowest px-6 py-2 items-center justify-between border-t border-outline-variant/20">
         <span className="tactical-label">GKC Grand Canyon Expedition Planner</span>
       </footer>
+
+      {/* Persistent chat assistant — available on all pages inside the shell */}
+      <ChatBot />
     </div>
   )
 }

@@ -29,7 +29,7 @@ const selectClasses =
 
 export default function Kit() {
   const { records: equipment, loading: equipLoading, create: createEquip, update: updateEquip, remove: removeEquip } = useCollection<EquipmentRecord>('equipment')
-  const { records: rafts, loading: raftsLoading, update: updateRaft } = useCollection<RaftRecord>('rafts')
+  const { records: rafts, loading: raftsLoading, create: createRaft, update: updateRaft, remove: removeRaft } = useCollection<RaftRecord>('rafts')
 
   // Derived filtered lists
   const kitchenItems = equipment.filter((e) => e.category === 'kitchen')
@@ -218,37 +218,6 @@ export default function Kit() {
     <div className="flex h-full">
       {/* Left Sidebar — desktop only */}
       <aside className="hidden lg:flex w-[240px] flex-shrink-0 bg-surface-container-lowest border-r border-outline-variant/20 p-5 flex-col gap-6">
-        <div>
-          <div className="flex flex-col gap-2">
-            {[
-              { icon: 'emergency', label: 'Emergency', count: 12 },
-              { icon: 'settings', label: 'Settings', count: null },
-              { icon: 'sync', label: 'Sync Status', count: null },
-            ].map((node) => (
-              <button
-                key={node.label}
-                className="flex items-center gap-3 px-3 py-2.5 text-left hover:bg-surface-container-high transition-colors group w-full"
-              >
-                <span className="material-symbols-outlined text-[18px] text-outline group-hover:text-on-surface transition-colors">
-                  {node.icon}
-                </span>
-                <span className="font-label text-xs uppercase tracking-widest text-on-surface-variant group-hover:text-on-surface transition-colors flex-1">
-                  {node.label}
-                </span>
-                {node.count !== null && (
-                  <span className="font-mono text-xs text-outline">{node.count}</span>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-auto">
-          <div className="border-t border-outline-variant/20 pt-4">
-            <span className="tactical-label">Last Sync</span>
-            <p className="font-mono text-xs text-on-surface mt-1">2024-11-14 08:42Z</p>
-          </div>
-        </div>
       </aside>
 
       {/* Main Content */}
@@ -263,6 +232,22 @@ export default function Kit() {
             <p className="tactical-label mb-8">Manifest & Allocation Tracking</p>
 
             {/* Raft Manifest Summary */}
+            <div className="flex items-center justify-between mb-3">
+              <span className="tactical-label">Raft Manifest</span>
+              <button
+                onClick={async () => {
+                  setSaving(true)
+                  try {
+                    await createRaft({ name: `Raft ${rafts.length + 1}`, tag: '', weight_kg: 0 })
+                  } finally { setSaving(false) }
+                }}
+                disabled={saving}
+                className="flex items-center gap-1 px-2 py-1 border border-outline-variant/40 hover:border-outline-variant hover:bg-surface-container-high transition-colors"
+              >
+                <span className="material-symbols-outlined text-base text-tertiary">add</span>
+                <span className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">Add Raft</span>
+              </button>
+            </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-10">
               {rafts.map((raft, idx) => (
                 <div
@@ -272,12 +257,30 @@ export default function Kit() {
                 >
                   <div className="flex items-center justify-between mb-2">
                     <span className="tactical-label">Raft {idx + 1}</span>
-                    <span className="material-symbols-outlined text-[16px] text-outline">
-                      directions_boat
-                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation()
+                          if (confirm(`Delete ${raft.name || 'Raft ' + (idx + 1)}?`)) {
+                            await removeRaft(raft.id)
+                          }
+                        }}
+                        className="material-symbols-outlined text-[14px] text-outline hover:text-error transition-colors"
+                      >delete</button>
+                      <span className="material-symbols-outlined text-[16px] text-outline">
+                        directions_boat
+                      </span>
+                    </div>
                   </div>
                   {editingRaft === raft.id ? (
                     <>
+                      <input
+                        className={inputClasses + ' mb-1'}
+                        value={raftDraft.name ?? raft.name}
+                        onChange={(e) => setRaftDraft({ ...raftDraft, name: e.target.value })}
+                        onClick={(e) => e.stopPropagation()}
+                        placeholder="Name"
+                      />
                       <input
                         className={inputClasses + ' mb-1'}
                         value={raftDraft.tag ?? raft.tag}
@@ -296,7 +299,7 @@ export default function Kit() {
                   ) : (
                     <>
                       <p className="font-label text-xs uppercase tracking-widest text-tertiary mb-1">
-                        {raft.tag}
+                        {raft.tag || raft.name}
                       </p>
                       <p className="font-mono text-2xl text-on-surface font-bold">
                         {raft.weight_kg}
@@ -663,15 +666,6 @@ export default function Kit() {
                   )
                 })}
 
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="material-symbols-outlined text-[14px] text-outline">
-                    cell_tower
-                  </span>
-                  <span className="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
-                    Expected Coverage{' '}
-                    <span className="font-mono text-on-surface">85%</span> Route
-                  </span>
-                </div>
               </div>
             </section>
 

@@ -22,9 +22,12 @@ services:
     restart: unless-stopped
     ports:
       - "8203:8090"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     volumes:
       - canyon-data:/pb/pb_data
       - ./pocketbase/pb_migrations:/pb/pb_migrations
+      - ./pocketbase/pb_hooks:/pb/pb_hooks
     networks:
       - net_core
 
