@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import pb from '@/lib/pocketbase'
 import { useCollection } from '@/hooks/useCollection'
@@ -6,7 +6,7 @@ import { waypoints, isMajorRapid } from '@/data/waypoints'
 import type { RecordModel } from 'pocketbase'
 
 // Routes that should auto-link in chat responses
-const APP_ROUTES = ['/map', '/command', '/team', '/gear', '/finances', '/logistics', '/emergency', '/rafting']
+const APP_ROUTES = ['/map', '/command', '/team', '/boats', '/gear', '/finances', '/logistics', '/emergency', '/rafting']
 
 interface TeamMemberRecord extends RecordModel {
   first_name: string
@@ -24,13 +24,51 @@ interface TeamMemberRecord extends RecordModel {
   dob: string
 }
 
+interface BoatRecord extends RecordModel {
+  slug: string
+  name: string
+  manufacturer: string
+  model: string
+  size: string
+  category: string
+  description: string
+  supplier: string
+  available_count: number
+}
+
+interface BoatChoiceRecord extends RecordModel {
+  team_member_id: string
+  first_choice_id: string
+  second_choice_id: string
+  third_choice_id: string
+  notes: string
+}
+
 type Role = 'user' | 'assistant'
 interface ChatMessage {
   role: Role
   content: string
 }
 
-type Mode = 'free' | 'onboarding'
+type Mode = 'free' | 'onboarding' | 'boatChoices'
+
+const BOAT_CATEGORIES = ['Playboat', 'Half-Slice', 'Creek', 'Expedition'] as const
+type BoatCategory = typeof BOAT_CATEGORIES[number]
+
+type BoatStep = 'identify' | 'firstCat' | 'firstBoat' | 'secondCat' | 'secondBoat' | 'thirdCat' | 'thirdBoat' | 'confirm'
+
+interface BoatWizardState {
+  step: BoatStep
+  memberId: string
+  selections: {
+    firstCat?: BoatCategory | ''
+    firstBoatId?: string
+    secondCat?: BoatCategory | ''
+    secondBoatId?: string
+    thirdCat?: BoatCategory | ''
+    thirdBoatId?: string
+  }
+}
 
 interface OnboardingStep {
   field: string
@@ -145,6 +183,7 @@ You can help with questions about:
 - The route (rapids, camps, side hikes, river miles)
 - Famous rapids (Badger, Soap Creek, House Rock, Hance, Horn Creek, Granite, Hermit, Crystal, Lava Falls, Upset, Bedrock, etc.) — running notes are sourced from Jim Michaud's "How To Row The Grand Canyon Rapids" guide
 - Team manifest (16 paddlers — names, roles, boater nicknames, paddler specs, medical notes, emergency contacts)
+- Boat choices — paddlers' 1st/2nd/3rd kayak picks from the outfitter catalogue (MOE, Ceiba, and Canyon REO)
 - Logistics (shuttles, permits, comms)
 - Finances (shared expedition costs)
 - Kit and equipment
@@ -156,11 +195,21 @@ Where to find specific data in the app:
 - /map — interactive map with all waypoints, rapids, camps
 - /command — day-by-day expedition timeline with rapid running notes and diagrams
 - /team — team manifest with paddler specs and medical info
+- /boats — boat catalogue and paddlers' 1st/2nd/3rd choices, with demand vs supply
 - /gear — equipment lists
 - /finances — shared expedition costs
 - /logistics — shuttles, permits, comms plan
 - /emergency — emergency contacts, extraction points, contingencies
 - /rafting — rafting techniques and reference material
+
+BOAT CHOICES:
+The expedition data block below includes the full BOATS CATALOGUE and every paddler's BOAT CHOICES. When someone asks "what are X's boat picks", "who picked the Pyranha Ripper", or "which boats are oversubscribed", answer directly from that data. Categories are Playboat / Half-Slice / Creek / Expedition. If a paddler wants to change their picks, tell them to tap the **Set My Boat Choices** quick-action tile in this chat to launch a guided wizard — do not try to set picks via free chat.
+
+QUICK-ACTION TILES (the ONLY buttons that exist in this chat):
+- **Onboard Yourself** — runs a guided wizard to add a new paddler to the manifest.
+- **Set My Boat Choices** — runs a guided wizard to pick 1st/2nd/3rd boats.
+
+That's it. Do **not** invent or reference tiles that don't exist (no "Edit My Profile", "Update Details", "Change Name", etc.). If a paddler wants to edit their existing record — name, contact info, medical notes, emergency contact — direct them to /team, where they can expand their row and click Edit. There is no in-chat profile editor.
 
 IMPORTANT: A "LIVE EXPEDITION DATA" block is appended below with the actual data currently in this user's app (team manifest, rapids, equipment, finances, logistics, emergency info, rafting reference). When answering factual questions ("who's on the team", "what's our budget", "what trauma kits do we carry", etc.) — pull directly from that data. Do NOT just point users to a tab when the answer is in the data block. Only suggest a page when the answer genuinely isn't in the data.
 
@@ -175,12 +224,14 @@ Be concise and direct. Use technical paddling/whitewater terminology when approp
 export default function ChatBot() {
   // Live expedition data — used to ground the assistant's responses
   const { records: teamMembers } = useCollection<TeamMemberRecord>('team_members')
+  const { records: boats } = useCollection<BoatRecord>('boats', { sort: 'sort_order' })
+  const { records: boatChoices } = useCollection<BoatChoiceRecord>('boat_choices')
 
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: 'assistant',
-      content: "Hi, I'm **Hance**. Named after the Class 8 at Mile 77 — flatters me a bit, but I'll take it.\n\nAsk me about:\n- The route, rapids, and camps (full Michaud running notes)\n- Team manifest, paddler specs, emergency contacts\n- Logistics, finances, gear\n- Safety, extraction points, contingencies\n- Whitewater technique, scouting, river commands\n\nOr tap **Onboard Yourself** if you're not on the manifest yet. Don't be precious about asking — that's what I'm here for.",
+      content: "Hi, I'm **Hance**. Named after the Class 8 at Mile 77 — flatters me a bit, but I'll take it.\n\nAsk me about:\n- The route, rapids, and camps (full Michaud running notes)\n- Team manifest, paddler specs, emergency contacts\n- Boats — who picked what, what's still available, what's oversubscribed\n- Logistics, finances, gear\n- Safety, extraction points, contingencies\n- Whitewater technique, scouting, river commands\n\nTap **Onboard Yourself** if you're not on the manifest yet, or **Set My Boat Choices** to lock in your 1st/2nd/3rd picks.",
     },
   ])
   const [input, setInput] = useState('')
@@ -196,12 +247,20 @@ export default function ChatBot() {
       return false
     }
   })
+  const [pinnedMemberId, setPinnedMemberId] = useState<string>(() => {
+    try {
+      return localStorage.getItem('canyon_member_id') || ''
+    } catch {
+      return ''
+    }
+  })
+  const [boatWiz, setBoatWiz] = useState<BoatWizardState | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // Keep keyboard up on mobile during onboarding by refocusing after each interaction
+  // Keep keyboard up on mobile during wizards by refocusing after each interaction
   const refocusInput = useCallback(() => {
-    if (mode !== 'onboarding') return
+    if (mode !== 'onboarding' && mode !== 'boatChoices') return
     // Use rAF so the focus runs after React re-render
     requestAnimationFrame(() => {
       textareaRef.current?.focus({ preventScroll: true })
@@ -259,10 +318,14 @@ export default function ChatBot() {
         dob: data.dob || '',
       }
 
-      await pb.collection('team_members').create(payload)
-      appendMessage('assistant', `**${data.first_name} ${data.last_name}** is now in the team manifest. Head over to /team to view or edit your record.`)
-      try { localStorage.setItem('canyon_onboarded', '1') } catch { /* ignore */ }
+      const created = await pb.collection('team_members').create(payload)
+      appendMessage('assistant', `**${data.first_name} ${data.last_name}** is now in the team manifest. Head over to /team to view or edit your record — or tap **Set My Boat Choices** to lock in 1st/2nd/3rd picks.`)
+      try {
+        localStorage.setItem('canyon_onboarded', '1')
+        localStorage.setItem('canyon_member_id', created.id)
+      } catch { /* ignore */ }
       setHasOnboarded(true)
+      setPinnedMemberId(created.id)
       setMode('free')
       setOnboardingStep(0)
       setOnboardingData({})
@@ -348,6 +411,223 @@ export default function ChatBot() {
     }
   }, [onboardingStep, onboardingData, pendingConfirm, submitOnboarding])
 
+  // ─── Boat Choices Wizard ─────────────────────────────────────
+  const boatsByCategory = useMemo(() => {
+    const map: Record<BoatCategory, BoatRecord[]> = {
+      'Playboat': [], 'Half-Slice': [], 'Creek': [], 'Expedition': [],
+    }
+    for (const b of boats) {
+      if ((BOAT_CATEGORIES as readonly string[]).includes(b.category)) {
+        map[b.category as BoatCategory].push(b)
+      }
+    }
+    return map
+  }, [boats])
+
+  const boatById = useMemo(() => {
+    const m = new Map<string, BoatRecord>()
+    for (const b of boats) m.set(b.id, b)
+    return m
+  }, [boats])
+
+  const startBoatChoices = () => {
+    // If we have a pinned member, go straight to firstCat. Otherwise identify first.
+    const initialStep: BoatStep = pinnedMemberId ? 'firstCat' : 'identify'
+    setBoatWiz({ step: initialStep, memberId: pinnedMemberId, selections: {} })
+    setMode('boatChoices')
+
+    // Greeting message — surface existing picks if any
+    const existing = pinnedMemberId ? boatChoices.find((c) => c.team_member_id === pinnedMemberId) : null
+    const me = pinnedMemberId ? teamMembers.find((m) => m.id === pinnedMemberId) : null
+    const existingSummary = existing
+      ? `\n\nYou currently have:\n- 1st: ${boatById.get(existing.first_choice_id)?.name || '_(none)_'}\n- 2nd: ${boatById.get(existing.second_choice_id)?.name || '_(none)_'}\n- 3rd: ${boatById.get(existing.third_choice_id)?.name || '_(none)_'}\n\nGoing through the wizard again will overwrite these.`
+      : ''
+    const intro = me
+      ? `Locking in boat choices for **${me.first_name} ${me.last_name}**.${existingSummary}\n\nPick the **category** for your **1st choice** — or type \`cancel\` to bail out.`
+      : `Which team member are you? Tap your name below — I'll pin it to this device so you don't have to pick again. Type \`cancel\` to bail out.`
+
+    setMessages([
+      { role: 'assistant', content: 'Boat-choices wizard. **Pick a 1st choice**, then optionally 2nd and 3rd. Skipping is fine — you can also do this on /boats.' },
+      { role: 'assistant', content: intro },
+    ])
+  }
+
+  const cancelBoatChoices = () => {
+    setBoatWiz(null)
+    setMode('free')
+    appendMessage('assistant', 'Boat-choices wizard cancelled. Nothing saved.')
+  }
+
+  const submitBoatChoices = useCallback(async (wiz: BoatWizardState) => {
+    try {
+      const payload = {
+        team_member_id:    wiz.memberId,
+        first_choice_id:   wiz.selections.firstBoatId  || '',
+        second_choice_id:  wiz.selections.secondBoatId || '',
+        third_choice_id:   wiz.selections.thirdBoatId  || '',
+      }
+      const existing = boatChoices.find((c) => c.team_member_id === wiz.memberId)
+      if (existing) {
+        await pb.collection('boat_choices').update(existing.id, payload)
+      } else {
+        await pb.collection('boat_choices').create(payload)
+      }
+      const me = teamMembers.find((m) => m.id === wiz.memberId)
+      appendMessage(
+        'assistant',
+        `Locked in for **${me ? me.first_name + ' ' + me.last_name : 'you'}**:\n- 1st: ${boatById.get(payload.first_choice_id)?.name || '_(none)_'}\n- 2nd: ${boatById.get(payload.second_choice_id)?.name || '_(none)_'}\n- 3rd: ${boatById.get(payload.third_choice_id)?.name || '_(none)_'}\n\nSee the full demand picture on /boats.`
+      )
+      setBoatWiz(null)
+      setMode('free')
+    } catch (err) {
+      console.error('Failed to save boat choices:', err)
+      appendMessage('assistant', `Sorry — I couldn't save your boat choices. Error: ${err}. You can try again or set them on /boats.`)
+      setBoatWiz(null)
+      setMode('free')
+    }
+  }, [boatChoices, teamMembers, boatById])
+
+  const handleBoatChoicesPick = useCallback(async (raw: string) => {
+    if (!boatWiz) return
+    const trimmed = raw.trim()
+
+    if (trimmed.toLowerCase() === 'cancel') {
+      cancelBoatChoices()
+      return
+    }
+
+    const wiz = boatWiz
+
+    switch (wiz.step) {
+      case 'identify': {
+        // Try to match by id (button uses id), or by name (typed)
+        const byId = teamMembers.find((m) => m.id === trimmed)
+        const byName = !byId ? teamMembers.find((m) => {
+          const full = `${m.first_name} ${m.last_name}`.toLowerCase()
+          return full === trimmed.toLowerCase() || m.first_name.toLowerCase() === trimmed.toLowerCase()
+        }) : null
+        const match = byId || byName
+        if (!match) {
+          appendMessage('assistant', `I don't recognise that name. Tap a tile below, or type one of the team-member names exactly.`)
+          return
+        }
+        try { localStorage.setItem('canyon_member_id', match.id) } catch { /* ignore */ }
+        setPinnedMemberId(match.id)
+        const existing = boatChoices.find((c) => c.team_member_id === match.id)
+        const existingSummary = existing
+          ? `\n\nYou currently have:\n- 1st: ${boatById.get(existing.first_choice_id)?.name || '_(none)_'}\n- 2nd: ${boatById.get(existing.second_choice_id)?.name || '_(none)_'}\n- 3rd: ${boatById.get(existing.third_choice_id)?.name || '_(none)_'}\n\nContinuing will overwrite these.`
+          : ''
+        appendMessage('assistant', `Pinned to **${match.first_name} ${match.last_name}** on this device.${existingSummary}\n\nPick the **category** for your **1st choice**.`)
+        setBoatWiz({ ...wiz, memberId: match.id, step: 'firstCat' })
+        return
+      }
+
+      case 'firstCat':
+      case 'secondCat':
+      case 'thirdCat': {
+        const slot = wiz.step === 'firstCat' ? 'first' : wiz.step === 'secondCat' ? 'second' : 'third'
+        const isSkip = trimmed.toLowerCase() === 'skip'
+        if (isSkip && slot === 'first') {
+          appendMessage('assistant', 'Your 1st choice is required — pick a category.')
+          return
+        }
+        if (isSkip) {
+          // Skip this slot, move to the next category step
+          const nextStep: BoatStep = slot === 'first' ? 'secondCat' : slot === 'second' ? 'thirdCat' : 'confirm'
+          const prompt = nextStep === 'confirm'
+            ? buildConfirmPrompt(wiz.selections, boatById)
+            : nextStep === 'secondCat'
+              ? 'Pick the **category** for your **2nd choice** — or skip.'
+              : 'Pick the **category** for your **3rd choice** — or skip.'
+          setBoatWiz({ ...wiz, step: nextStep })
+          appendMessage('assistant', prompt)
+          return
+        }
+        // Validate category
+        const cat = (BOAT_CATEGORIES as readonly string[]).find((c) => c.toLowerCase() === trimmed.toLowerCase()) as BoatCategory | undefined
+        if (!cat) {
+          appendMessage('assistant', `Pick a category: ${BOAT_CATEGORIES.join(', ')}, or \`skip\`.`)
+          return
+        }
+        const list = boatsByCategory[cat]
+        if (!list || list.length === 0) {
+          appendMessage('assistant', `No boats in **${cat}** — try another.`)
+          return
+        }
+        // Save category, move to corresponding boat step
+        const nextStep: BoatStep = slot === 'first' ? 'firstBoat' : slot === 'second' ? 'secondBoat' : 'thirdBoat'
+        const newSelections = {
+          ...wiz.selections,
+          [slot === 'first' ? 'firstCat' : slot === 'second' ? 'secondCat' : 'thirdCat']: cat,
+        }
+        setBoatWiz({ ...wiz, step: nextStep, selections: newSelections })
+        appendMessage('assistant', `Good. Which **${cat}** boat? Tap one below — counts in parens are how many hulls are available.`)
+        return
+      }
+
+      case 'firstBoat':
+      case 'secondBoat':
+      case 'thirdBoat': {
+        const slot = wiz.step === 'firstBoat' ? 'first' : wiz.step === 'secondBoat' ? 'second' : 'third'
+        const isSkip = trimmed.toLowerCase() === 'skip'
+        if (isSkip && slot === 'first') {
+          appendMessage('assistant', 'Pick a boat for your 1st choice — it\'s required.')
+          return
+        }
+        if (isSkip) {
+          // Skip — keep no selection. Advance.
+          const nextStep: BoatStep = slot === 'first' ? 'secondCat' : slot === 'second' ? 'thirdCat' : 'confirm'
+          const newSelections = {
+            ...wiz.selections,
+            [slot === 'first' ? 'firstCat' : slot === 'second' ? 'secondCat' : 'thirdCat']: '' as const,
+            [slot === 'first' ? 'firstBoatId' : slot === 'second' ? 'secondBoatId' : 'thirdBoatId']: '',
+          }
+          const prompt = nextStep === 'confirm'
+            ? buildConfirmPrompt(newSelections, boatById)
+            : nextStep === 'secondCat'
+              ? 'Pick the **category** for your **2nd choice** — or skip.'
+              : 'Pick the **category** for your **3rd choice** — or skip.'
+          setBoatWiz({ ...wiz, step: nextStep, selections: newSelections })
+          appendMessage('assistant', prompt)
+          return
+        }
+        // Match boat by id (tile) or by name (typed)
+        const byId = boats.find((b) => b.id === trimmed)
+        const byName = !byId ? boats.find((b) => b.name.toLowerCase() === trimmed.toLowerCase()) : null
+        const match = byId || byName
+        if (!match) {
+          appendMessage('assistant', `I don't recognise that boat. Tap a tile, or type one of the names exactly (e.g. "Pyranha Ripper 2 Medium").`)
+          return
+        }
+        const newSelections = {
+          ...wiz.selections,
+          [slot === 'first' ? 'firstBoatId' : slot === 'second' ? 'secondBoatId' : 'thirdBoatId']: match.id,
+        }
+        const nextStep: BoatStep = slot === 'first' ? 'secondCat' : slot === 'second' ? 'thirdCat' : 'confirm'
+        const prompt = nextStep === 'confirm'
+          ? buildConfirmPrompt(newSelections, boatById)
+          : nextStep === 'secondCat'
+            ? `Got it — **${match.name}** as your 1st choice. Now pick the **category** for your **2nd choice**, or skip.`
+            : `Got it — **${match.name}** as your 2nd choice. Now pick the **category** for your **3rd choice**, or skip.`
+        setBoatWiz({ ...wiz, step: nextStep, selections: newSelections })
+        appendMessage('assistant', prompt)
+        return
+      }
+
+      case 'confirm': {
+        if (trimmed.toLowerCase() === 'yes' || trimmed.toLowerCase() === 'y' || trimmed.toLowerCase() === 'confirm') {
+          appendMessage('assistant', 'Saving your boat choices…')
+          await submitBoatChoices(wiz)
+        } else {
+          appendMessage('assistant', 'OK, nothing saved. Tap **Set My Boat Choices** again to redo.')
+          setBoatWiz(null)
+          setMode('free')
+        }
+        return
+      }
+    }
+  }, [boatWiz, teamMembers, boats, boatsByCategory, boatChoices, boatById, submitBoatChoices])
+
   const sendFreeMessage = async (userText: string) => {
     setSending(true)
     try {
@@ -358,7 +638,7 @@ export default function ChatBot() {
       const apiMessages = newMessages.map((m) => ({ role: m.role, content: m.content }))
 
       // Fetch live data from all relevant collections in parallel
-      const dynamicContext = await buildExpeditionContext(teamMembers)
+      const dynamicContext = await buildExpeditionContext(teamMembers, boats, boatChoices)
 
       const res = await fetch('/api/chat', {
         method: 'POST',
@@ -395,6 +675,13 @@ export default function ChatBot() {
       return
     }
 
+    if (mode === 'boatChoices') {
+      appendMessage('user', text)
+      await handleBoatChoicesPick(text)
+      refocusInput()
+      return
+    }
+
     if (text.toLowerCase() === 'restart' && messages.some((m) => m.content.includes('manifest'))) {
       startOnboarding()
       return
@@ -410,18 +697,66 @@ export default function ChatBot() {
     }
   }
 
-  // Submit a value directly (used by quick-pick tiles)
-  const handleQuickPick = async (value: string) => {
-    if (sending || mode !== 'onboarding') return
-    setInput('')
-    appendMessage('user', value)
-    await handleOnboardingInput(value)
-    refocusInput()
+  // Submit a value directly (used by quick-pick tiles).
+  // We intentionally DO NOT refocus the textarea here — on mobile, that forces
+  // the soft keyboard up between tile taps, which is intrusive. The textarea
+  // gets focus only when the user actually types into it.
+  const handleQuickPick = async (value: string, displayLabel?: string) => {
+    if (sending) return
+    // If the keyboard happens to be up (user typed, then tapped a tile),
+    // actively dismiss it so it doesn't sit over the next tile row.
+    textareaRef.current?.blur()
+    if (mode === 'onboarding') {
+      setInput('')
+      appendMessage('user', displayLabel || value)
+      await handleOnboardingInput(value)
+      return
+    }
+    if (mode === 'boatChoices') {
+      setInput('')
+      appendMessage('user', displayLabel || value)
+      await handleBoatChoicesPick(value)
+      return
+    }
   }
 
   // Determine if we should show quick-pick tiles for the current step
   const currentStep = mode === 'onboarding' && !pendingConfirm ? ONBOARDING_STEPS[onboardingStep] : null
   const showTiles = currentStep && currentStep.options && currentStep.options.length > 0
+
+  // Tiles for the boat-choices wizard (depends on current step)
+  const boatWizTiles = useMemo(() => {
+    if (mode !== 'boatChoices' || !boatWiz) return null
+    const step = boatWiz.step
+    if (step === 'identify') {
+      return {
+        kind: 'identify' as const,
+        items: teamMembers.map((m) => ({ id: m.id, label: `${m.first_name} ${m.last_name}` })),
+        allowSkip: false,
+      }
+    }
+    if (step === 'firstCat' || step === 'secondCat' || step === 'thirdCat') {
+      return {
+        kind: 'category' as const,
+        items: BOAT_CATEGORIES.map((c) => ({ id: c, label: c })),
+        allowSkip: step !== 'firstCat',
+      }
+    }
+    if (step === 'firstBoat' || step === 'secondBoat' || step === 'thirdBoat') {
+      const slot = step === 'firstBoat' ? 'firstCat' : step === 'secondBoat' ? 'secondCat' : 'thirdCat'
+      const cat = boatWiz.selections[slot] as BoatCategory | undefined
+      const list = cat ? boatsByCategory[cat] : []
+      return {
+        kind: 'boat' as const,
+        items: list.map((b) => ({ id: b.id, label: `${b.name} (×${b.available_count || 0})` })),
+        allowSkip: step !== 'firstBoat',
+      }
+    }
+    if (step === 'confirm') {
+      return { kind: 'confirm' as const, items: [], allowSkip: false }
+    }
+    return null
+  }, [mode, boatWiz, teamMembers, boatsByCategory])
 
   return (
     <>
@@ -447,7 +782,7 @@ export default function ChatBot() {
                 Hance
               </h3>
               <p className="tactical-label text-[9px] mt-0.5 normal-case tracking-normal">
-                {mode === 'onboarding' ? 'Onboarding…' : 'Powered by Claude Haiku 4.5'}
+                {mode === 'onboarding' ? 'Onboarding…' : mode === 'boatChoices' ? 'Boat-choices wizard…' : 'Powered by Claude Haiku 4.5'}
               </p>
             </div>
             <button
@@ -472,6 +807,15 @@ export default function ChatBot() {
               >
                 <span className="material-symbols-outlined text-sm">person_add</span>
                 Onboard Yourself
+              </button>
+              <button
+                onClick={startBoatChoices}
+                disabled={!hasOnboarded && teamMembers.length === 0}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-surface-container-high text-on-surface font-label text-[10px] uppercase tracking-widest hover:bg-tertiary-container hover:text-on-tertiary transition-colors disabled:opacity-40"
+                title={pinnedMemberId ? 'Update your boat picks' : 'Pick your boat preferences'}
+              >
+                <span className="material-symbols-outlined text-sm">kayaking</span>
+                Set My Boat Choices
               </button>
             </div>
           )}
@@ -583,6 +927,74 @@ export default function ChatBot() {
               </div>
             )}
 
+            {/* Boat-choices wizard — header (step indicator + cancel) */}
+            {mode === 'boatChoices' && boatWiz && (
+              <div className="flex items-center justify-between mb-2">
+                <span className="tactical-label">
+                  {boatWiz.step === 'identify' && 'Identify Yourself'}
+                  {boatWiz.step === 'firstCat'  && '1st Choice · Category'}
+                  {boatWiz.step === 'firstBoat' && '1st Choice · Boat'}
+                  {boatWiz.step === 'secondCat' && '2nd Choice · Category'}
+                  {boatWiz.step === 'secondBoat'&& '2nd Choice · Boat'}
+                  {boatWiz.step === 'thirdCat'  && '3rd Choice · Category'}
+                  {boatWiz.step === 'thirdBoat' && '3rd Choice · Boat'}
+                  {boatWiz.step === 'confirm'   && 'Confirm Save'}
+                </span>
+                <button
+                  onClick={cancelBoatChoices}
+                  className="font-label text-[10px] text-outline hover:text-error uppercase tracking-widest transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+
+            {/* Boat-choices wizard — tile picker */}
+            {mode === 'boatChoices' && boatWizTiles && boatWizTiles.kind !== 'confirm' && (
+              <div className="flex flex-wrap gap-1.5 mb-2 max-h-32 overflow-y-auto">
+                {boatWizTiles.items.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => handleQuickPick(item.id, item.label)}
+                    onMouseDown={(e) => e.preventDefault()}
+                    disabled={sending}
+                    className="px-2.5 py-1.5 bg-tertiary-container text-on-tertiary font-label text-[10px] uppercase tracking-widest hover:brightness-110 transition-all disabled:opacity-50"
+                  >
+                    {item.label}
+                  </button>
+                ))}
+                {boatWizTiles.allowSkip && (
+                  <button
+                    onClick={() => handleQuickPick('skip', 'Skip')}
+                    disabled={sending}
+                    className="px-2.5 py-1.5 bg-surface-container-high text-on-surface-variant font-label text-[10px] uppercase tracking-widest hover:bg-surface-container-highest transition-colors disabled:opacity-50"
+                  >
+                    Skip
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Boat-choices wizard — confirm tiles */}
+            {mode === 'boatChoices' && boatWizTiles && boatWizTiles.kind === 'confirm' && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                <button
+                  onClick={() => handleQuickPick('yes', 'Yes, save')}
+                  disabled={sending}
+                  className="px-3 py-1.5 bg-tertiary-container text-on-tertiary font-label text-[11px] uppercase tracking-widest hover:brightness-110 transition-all disabled:opacity-50"
+                >
+                  Yes, Save
+                </button>
+                <button
+                  onClick={() => handleQuickPick('no', 'No, cancel')}
+                  disabled={sending}
+                  className="px-3 py-1.5 bg-surface-container-high text-on-surface-variant font-label text-[11px] uppercase tracking-widest hover:bg-error-container hover:text-error transition-colors disabled:opacity-50"
+                >
+                  No, Cancel
+                </button>
+              </div>
+            )}
+
             <div className="flex gap-2">
               <textarea
                 ref={textareaRef}
@@ -592,7 +1004,9 @@ export default function ChatBot() {
                 placeholder={
                   mode === 'onboarding'
                     ? (pendingConfirm ? 'yes / no' : (ONBOARDING_STEPS[onboardingStep]?.placeholder || 'Type your answer'))
-                    : 'Ask anything…'
+                    : mode === 'boatChoices'
+                      ? 'Tap a tile or type a name'
+                      : 'Ask anything…'
                 }
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKey}
@@ -600,7 +1014,7 @@ export default function ChatBot() {
               />
               <button
                 onClick={handleSend}
-                onMouseDown={(e) => { if (mode === 'onboarding') e.preventDefault() }}
+                onMouseDown={(e) => { if (mode === 'onboarding' || mode === 'boatChoices') e.preventDefault() }}
                 disabled={sending || !input.trim()}
                 className="px-3 bg-primary text-on-primary disabled:opacity-30 hover:brightness-90 transition-colors"
                 aria-label="Send"
@@ -617,7 +1031,11 @@ export default function ChatBot() {
 
 // Build a snapshot of all expedition data from PocketBase + static files,
 // formatted as a compact text block to append to the system prompt.
-async function buildExpeditionContext(teamMembers: TeamMemberRecord[]): Promise<string> {
+async function buildExpeditionContext(
+  teamMembers: TeamMemberRecord[],
+  boats: BoatRecord[],
+  boatChoices: BoatChoiceRecord[],
+): Promise<string> {
   // Fetch all collections in parallel — non-fatal if any single one fails.
   const safeFetch = async <T,>(name: string): Promise<T[]> => {
     try {
@@ -748,6 +1166,37 @@ async function buildExpeditionContext(teamMembers: TeamMemberRecord[]): Promise<
     `- ${r.title || '?'}${r.url ? ' (' + r.url + ')' : ''}${r.description ? ' — ' + r.description : ''}`
   )
 
+  // Boats catalogue + per-paddler choices
+  const boatLookup = new Map<string, BoatRecord>()
+  for (const b of boats) boatLookup.set(b.id, b)
+  const memberLookup = new Map<string, TeamMemberRecord>()
+  for (const tm of teamMembers) memberLookup.set(tm.id, tm)
+
+  const boatsSummary = list(boats, (b: BoatRecord) =>
+    `- [${b.category}] ${b.name} — ×${b.available_count} available · supplier: ${b.supplier}${b.description ? ' — ' + b.description : ''}`
+  )
+
+  const choicesSummary = boatChoices.length === 0
+    ? ''
+    : boatChoices.map((c) => {
+        const m = memberLookup.get(c.team_member_id)
+        const who = m ? `${m.first_name} ${m.last_name}`.trim() : c.team_member_id
+        const f = c.first_choice_id  ? boatLookup.get(c.first_choice_id)?.name  || c.first_choice_id  : '(none)'
+        const s = c.second_choice_id ? boatLookup.get(c.second_choice_id)?.name || c.second_choice_id : '(none)'
+        const t = c.third_choice_id  ? boatLookup.get(c.third_choice_id)?.name  || c.third_choice_id  : '(none)'
+        return `- ${who}: 1st=${f}, 2nd=${s}, 3rd=${t}`
+      }).join('\n')
+
+  // Demand vs supply summary
+  const demand = new Map<string, number>()
+  for (const c of boatChoices) {
+    if (c.first_choice_id)  demand.set(c.first_choice_id,  (demand.get(c.first_choice_id)  || 0) + 1)
+  }
+  const oversubscribed = boats
+    .filter((b) => (demand.get(b.id) || 0) > (b.available_count || 0))
+    .map((b) => `- ${b.name}: ${demand.get(b.id)} want it as 1st, ${b.available_count} available`)
+    .join('\n')
+
   return `
 
 ---
@@ -770,7 +1219,19 @@ ${rapidsSummary}` +
     sect(`RAFT TYPES (${raftTypes.length})`, raftTypesSummary) +
     sect(`RIGGING TOPICS (${riggingTopics.length})`, riggingSummary) +
     sect(`RIVER COMMANDS (${riverCommands.length})`, commandsSummary) +
-    sect(`RAFTING VIDEOS (${raftingVideos.length})`, videosSummary)
+    sect(`RAFTING VIDEOS (${raftingVideos.length})`, videosSummary) +
+    sect(`BOATS CATALOGUE (${boats.length} model+size combos)`, boatsSummary) +
+    sect(`BOAT CHOICES (${boatChoices.length} paddler${boatChoices.length === 1 ? '' : 's'} picked)`, choicesSummary) +
+    sect(`OVERSUBSCRIBED BOATS (more 1st-picks than units)`, oversubscribed)
+}
+
+// Render the confirmation prompt at the end of the boat-choices wizard.
+function buildConfirmPrompt(
+  sel: { firstBoatId?: string; secondBoatId?: string; thirdBoatId?: string },
+  boatById: Map<string, BoatRecord>
+): string {
+  const fmt = (id?: string) => id ? (boatById.get(id)?.name || '_(unknown)_') : '_(none)_'
+  return `Here's what I have:\n\n- **1st:** ${fmt(sel.firstBoatId)}\n- **2nd:** ${fmt(sel.secondBoatId)}\n- **3rd:** ${fmt(sel.thirdBoatId)}\n\nSave these? (yes / no)`
 }
 
 // Compute age from any of the DOB formats we accept. Returns null if unparseable.
@@ -907,7 +1368,7 @@ function renderMessage(text: string, onLinkClick?: () => void): React.ReactNode 
 // Inline formatting. We normalize first (strip any markdown wrapping around app routes),
 // then a single regex pass handles markdown links, bare app routes, bold, and code.
 function renderInline(text: string, onLinkClick?: () => void): React.ReactNode {
-  const routeNames = 'map|command|team|gear|finances|logistics|emergency|rafting'
+  const routeNames = 'map|command|team|boats|gear|finances|logistics|emergency|rafting'
 
   // Pre-normalize: strip backticks, bold (**), italics (*) wrapped around app routes.
   // Claude sometimes outputs `**/team**`, `` `/team` ``, etc. — turn them into bare /team

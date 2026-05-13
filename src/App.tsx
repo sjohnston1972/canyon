@@ -10,6 +10,7 @@ import Finances from '@/pages/Finances'
 import Logistics from '@/pages/Logistics'
 import Emergency from '@/pages/Emergency'
 import Rafting from '@/pages/Rafting'
+import Boats from '@/pages/Boats'
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
         <Route path="command" element={<Command />} />
         <Route path="map" element={<MapView />} />
         <Route path="team" element={<Team />} />
+        <Route path="boats" element={<Boats />} />
         <Route path="gear" element={<Kit />} />
         <Route path="finances" element={<Finances />} />
         <Route path="logistics" element={<Logistics />} />

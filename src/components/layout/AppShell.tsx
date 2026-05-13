@@ -7,6 +7,7 @@ const navItems = [
   { to: '/command', label: 'Timeline', icon: 'explore' },
   { to: '/map', label: 'Waypoints', icon: 'map' },
   { to: '/team', label: 'Team', icon: 'groups' },
+  { to: '/boats', label: 'Boats', icon: 'kayaking' },
   { to: '/gear', label: 'Gear', icon: 'inventory_2' },
   { to: '/finances', label: 'Finances', icon: 'payments' },
   { to: '/logistics', label: 'Logistics', icon: 'local_shipping' },

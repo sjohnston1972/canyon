@@ -97,23 +97,18 @@ function computeAge(dob: string): number | null {
 
 const inputClasses =
   'w-full bg-surface-container-lowest text-on-surface font-mono text-sm border-b-2 border-outline-variant/30 focus:border-primary focus:outline-none px-2 py-1.5'
-const selectClasses =
-  'w-full bg-surface-container-lowest text-on-surface font-mono text-sm border-b-2 border-outline-variant/30 focus:border-primary focus:outline-none px-2 py-1.5 appearance-none cursor-pointer'
 const textareaClasses =
   'w-full bg-surface-container-lowest text-on-surface font-mono text-sm border-b-2 border-outline-variant/30 focus:border-primary focus:outline-none px-2 py-1.5 resize-y min-h-[60px]'
 
-const BOAT_PREFERENCE_OPTIONS = ['Play', 'Half Slice', 'Full Volume'] as const
-
 export default function Team() {
   const { records: teamMembers, loading, create, update, remove } = useCollection<TeamMemberRecord>('team_members')
+
   const [expandedRow, setExpandedRow] = useState<string>('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editDraft, setEditDraft] = useState<TeamMemberDraft | null>(null)
   const [isCreating, setIsCreating] = useState(false)
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const [viewMode, setViewMode] = useState<'manifest' | 'boatType'>('manifest')
-  const [chartCollapsed, setChartCollapsed] = useState(false)
 
   const toggleRow = (id: string) => {
     if (editingId === id) return
@@ -203,30 +198,6 @@ export default function Team() {
     ? [...teamMembers, { id: '__new__' as const, _isNew: true as const }]
     : teamMembers
 
-  // Group paddlers by boat preference (direct value match — populated from dropdown)
-  type BoatGroup = 'Play' | 'Half Slice' | 'Full Volume' | 'Unassigned'
-
-  const grouped: Record<BoatGroup, TeamMemberRecord[]> = {
-    'Play': [],
-    'Half Slice': [],
-    'Full Volume': [],
-    'Unassigned': [],
-  }
-  teamMembers.forEach((m) => {
-    const pref = m.boat_preference as BoatGroup
-    if (pref === 'Play' || pref === 'Half Slice' || pref === 'Full Volume') {
-      grouped[pref].push(m)
-    } else {
-      grouped['Unassigned'].push(m)
-    }
-  })
-
-  const groupConfig: Array<{ key: Exclude<BoatGroup, 'Unassigned'>; icon: string; description: string }> = [
-    { key: 'Play', icon: 'sports_esports', description: 'Playboats — short, low-volume, freestyle' },
-    { key: 'Half Slice', icon: 'waves', description: 'Half-slice — playable river-runners with sliced sterns' },
-    { key: 'Full Volume', icon: 'kayaking', description: 'Full-volume creekers and river-runners' },
-  ]
-
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -275,238 +246,13 @@ export default function Team() {
             </div>
           </div>
 
-          {/* Boat Type Breakdown — inline on screens under xl (sidebar version covers xl+) */}
-          <div className="surface-card xl:hidden">
-            <button
-              onClick={() => setChartCollapsed((c) => !c)}
-              className="w-full flex items-center gap-2 text-left"
-            >
-              <span className="material-symbols-outlined text-base text-tertiary">bar_chart</span>
-              <h3 className="font-display text-xs font-bold text-primary uppercase tracking-wider flex-1">
-                Boat Type Breakdown
-              </h3>
-              <span className={`material-symbols-outlined text-base text-on-surface-variant transition-transform ${chartCollapsed ? '' : 'rotate-180'}`}>
-                expand_more
-              </span>
-            </button>
-            {!chartCollapsed && (() => {
-              const chartRows: Array<{ key: BoatGroup; count: number; color: string }> = [
-                { key: 'Play', count: grouped['Play'].length, color: 'bg-tertiary' },
-                { key: 'Half Slice', count: grouped['Half Slice'].length, color: 'bg-primary' },
-                { key: 'Full Volume', count: grouped['Full Volume'].length, color: 'bg-tertiary-container' },
-                { key: 'Unassigned', count: grouped['Unassigned'].length, color: 'bg-outline-variant/40' },
-              ]
-              const max = Math.max(1, ...chartRows.map((r) => r.count))
-              return (
-                <div className="space-y-2.5 mt-3">
-                  {chartRows.map((row) => {
-                    const pct = totalMembers > 0 ? Math.round((row.count / totalMembers) * 100) : 0
-                    const widthPct = (row.count / max) * 100
-                    return (
-                      <div key={row.key}>
-                        <div className="flex items-baseline justify-between mb-1">
-                          <span className="font-label text-[10px] text-on-surface-variant uppercase tracking-wider">
-                            {row.key}
-                          </span>
-                          <div className="flex items-baseline gap-1.5">
-                            <span className="font-mono text-sm text-on-surface">
-                              {String(row.count).padStart(2, '0')}
-                            </span>
-                            <span className="font-mono text-[9px] text-outline">
-                              {pct}%
-                            </span>
-                          </div>
-                        </div>
-                        <div className="h-2 bg-surface-container-highest overflow-hidden">
-                          <div
-                            className={`h-full ${row.color} transition-all`}
-                            style={{ width: `${widthPct}%` }}
-                          />
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )
-            })()}
-          </div>
-
-          {/* View Toggle */}
-          <div className="flex items-center gap-1 bg-surface-container-lowest p-1 w-fit">
-            <button
-              onClick={() => setViewMode('manifest')}
-              className={`flex items-center gap-2 px-3 py-1.5 font-label text-xs uppercase tracking-widest transition-colors ${
-                viewMode === 'manifest'
-                  ? 'bg-surface-container-high text-on-surface'
-                  : 'text-on-surface-variant hover:text-on-surface'
-              }`}
-            >
-              <span className="material-symbols-outlined text-base">table_rows</span>
-              Manifest
-            </button>
-            <button
-              onClick={() => setViewMode('boatType')}
-              className={`flex items-center gap-2 px-3 py-1.5 font-label text-xs uppercase tracking-widest transition-colors ${
-                viewMode === 'boatType'
-                  ? 'bg-surface-container-high text-on-surface'
-                  : 'text-on-surface-variant hover:text-on-surface'
-              }`}
-            >
-              <span className="material-symbols-outlined text-base">kayaking</span>
-              By Boat Type
-            </button>
-          </div>
-
-          {/* Grouped View — By Boat Type */}
-          {viewMode === 'boatType' && (
-            <div className="space-y-4">
-              {groupConfig.map((group) => {
-                const members = grouped[group.key]
-                return (
-                  <div key={group.key} className="surface-card p-0 overflow-hidden">
-                    {/* Group Header */}
-                    <div className="flex items-center gap-3 px-4 py-3 bg-surface-container-highest border-b border-outline-variant/20">
-                      <span className="material-symbols-outlined text-tertiary">{group.icon}</span>
-                      <div className="flex-1">
-                        <h3 className="font-display text-sm font-bold text-primary uppercase tracking-wider">
-                          {group.key}
-                        </h3>
-                        <p className="tactical-label text-[9px] mt-0.5 normal-case tracking-normal">
-                          {group.description}
-                        </p>
-                      </div>
-                      <span className="font-mono text-2xl text-on-surface">
-                        {String(members.length).padStart(2, '0')}
-                      </span>
-                    </div>
-
-                    {/* Member Cards */}
-                    {members.length === 0 ? (
-                      <div className="px-4 py-6 text-center">
-                        <p className="tactical-label text-on-surface-variant">No paddlers in this group</p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-px bg-outline-variant/10">
-                        {members.map((m) => (
-                          <div key={m.id} className="bg-surface-container-lowest p-4">
-                            <div className="flex items-start gap-3">
-                              <div className="w-9 h-9 bg-surface-container-highest flex items-center justify-center flex-shrink-0">
-                                <span className="font-mono text-xs text-on-surface-variant">
-                                  {(m.first_name[0] || '?')}{(m.last_name[0] || '?')}
-                                </span>
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="font-display text-sm font-semibold text-on-surface uppercase tracking-wider truncate">
-                                  {m.last_name || '---'}, {m.first_name || '---'}
-                                </p>
-                                <p className="tactical-label mt-0.5">
-                                  {m.role || '---'}
-                                  {m.boat_tag && <span className="text-tertiary ml-2">[{m.boat_tag}]</span>}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 pt-3 border-t border-outline-variant/10">
-                              <div>
-                                <span className="tactical-label text-[9px]">Height</span>
-                                <p className="font-mono text-xs text-on-surface mt-0.5">
-                                  {m.paddler_height || '---'}
-                                </p>
-                              </div>
-                              <div>
-                                <span className="tactical-label text-[9px]">Weight</span>
-                                <p className="font-mono text-xs text-on-surface mt-0.5">
-                                  {m.paddler_weight || '---'}
-                                </p>
-                              </div>
-                              <div className="col-span-2">
-                                <span className="tactical-label text-[9px]">Boat Choice</span>
-                                <p className="font-mono text-xs text-on-surface mt-0.5">
-                                  {m.boat_preference || '---'}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-
-              {/* Unassigned */}
-              {grouped['Unassigned'].length > 0 && (
-                <div className="surface-card p-0 overflow-hidden">
-                  <div className="flex items-center gap-3 px-4 py-3 bg-surface-container-highest border-b border-outline-variant/20">
-                    <span className="material-symbols-outlined text-on-surface-variant">help</span>
-                    <div className="flex-1">
-                      <h3 className="font-display text-sm font-bold text-on-surface-variant uppercase tracking-wider">
-                        Unassigned
-                      </h3>
-                      <p className="tactical-label text-[9px] mt-0.5 normal-case tracking-normal">
-                        Edit the paddler and pick a Boat Preference to assign them to a group
-                      </p>
-                    </div>
-                    <span className="font-mono text-2xl text-on-surface-variant">
-                      {String(grouped['Unassigned'].length).padStart(2, '0')}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-px bg-outline-variant/10">
-                    {grouped['Unassigned'].map((m) => (
-                      <div key={m.id} className="bg-surface-container-lowest p-4">
-                        <div className="flex items-start gap-3">
-                          <div className="w-9 h-9 bg-surface-container-highest flex items-center justify-center flex-shrink-0">
-                            <span className="font-mono text-xs text-on-surface-variant">
-                              {(m.first_name[0] || '?')}{(m.last_name[0] || '?')}
-                            </span>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-display text-sm font-semibold text-on-surface uppercase tracking-wider truncate">
-                              {m.last_name || '---'}, {m.first_name || '---'}
-                            </p>
-                            <p className="tactical-label mt-0.5">
-                              {m.role || '---'}
-                              {m.boat_tag && <span className="text-tertiary ml-2">[{m.boat_tag}]</span>}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 pt-3 border-t border-outline-variant/10">
-                          <div>
-                            <span className="tactical-label text-[9px]">Height</span>
-                            <p className="font-mono text-xs text-on-surface mt-0.5">
-                              {m.paddler_height || '---'}
-                            </p>
-                          </div>
-                          <div>
-                            <span className="tactical-label text-[9px]">Weight</span>
-                            <p className="font-mono text-xs text-on-surface mt-0.5">
-                              {m.paddler_weight || '---'}
-                            </p>
-                          </div>
-                          <div className="col-span-2">
-                            <span className="tactical-label text-[9px]">Boat Choice</span>
-                            <p className="font-mono text-xs text-on-surface mt-0.5">
-                              {m.boat_preference || '---'}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Team Manifest Table */}
-          {viewMode === 'manifest' && (
           <div className="surface-card p-0 overflow-hidden">
             {/* Table Header */}
-            <div className="hidden md:grid grid-cols-[1fr_130px_130px_120px_90px_48px] gap-0 px-4 py-3 bg-surface-container-highest border-b border-outline-variant/20">
+            <div className="hidden md:grid grid-cols-[1fr_180px_160px_48px] gap-0 px-4 py-3 bg-surface-container-highest border-b border-outline-variant/20">
               <span className="tactical-label">Name</span>
               <span className="tactical-label">Role</span>
               <span className="tactical-label">Boater Nickname</span>
-              <span className="tactical-label">Boat Pref</span>
-              <span className="tactical-label">Own Boat</span>
               <span />
             </div>
 
@@ -541,7 +287,7 @@ export default function Team() {
                 <div key={memberId}>
                   {/* Row */}
                   <div
-                    className={`grid grid-cols-1 md:grid-cols-[1fr_130px_130px_120px_90px_48px] gap-2 md:gap-0 items-center px-4 py-3 border-b border-outline-variant/10 cursor-pointer hover:bg-surface-container-high/50 transition-colors ${
+                    className={`grid grid-cols-1 md:grid-cols-[1fr_180px_160px_48px] gap-2 md:gap-0 items-center px-4 py-3 border-b border-outline-variant/10 cursor-pointer hover:bg-surface-container-high/50 transition-colors ${
                       idx % 2 === 0 ? 'bg-surface-container-low' : 'bg-surface-container-lowest'
                     }`}
                     onClick={() => toggleRow(memberId)}
@@ -577,39 +323,6 @@ export default function Team() {
                       )}
                     </div>
 
-                    {/* Boat Preference */}
-                    <div className="hidden md:block">
-                      {displayData.boat_preference ? (
-                        <span className="px-1.5 py-0.5 bg-surface-container-highest font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
-                          {displayData.boat_preference}
-                        </span>
-                      ) : (
-                        <span className="font-mono text-xs text-outline">---</span>
-                      )}
-                    </div>
-
-                    {/* Own Boat */}
-                    <div className="hidden md:block">
-                      {displayData.own_boat === 'Yes' && (
-                        <span className="px-1.5 py-0.5 bg-tertiary-container text-tertiary font-label text-[10px] uppercase tracking-widest">
-                          Yes
-                        </span>
-                      )}
-                      {displayData.own_boat === 'No' && (
-                        <span className="px-1.5 py-0.5 bg-surface-container-highest text-on-surface-variant font-label text-[10px] uppercase tracking-widest">
-                          No
-                        </span>
-                      )}
-                      {displayData.own_boat === 'Maybe' && (
-                        <span className="px-1.5 py-0.5 bg-surface-container-highest text-on-surface-variant font-label text-[10px] uppercase tracking-widest border border-outline-variant/40">
-                          Maybe
-                        </span>
-                      )}
-                      {!displayData.own_boat && (
-                        <span className="font-mono text-xs text-outline">---</span>
-                      )}
-                    </div>
-
                     {/* Expand Button */}
                     <div className="hidden md:flex justify-center">
                       <span
@@ -626,26 +339,6 @@ export default function Team() {
                       {displayData.boat_tag && (
                         <span className="px-1.5 py-0.5 bg-surface-container-highest font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
                           {displayData.boat_tag}
-                        </span>
-                      )}
-                      {displayData.boat_preference && (
-                        <span className="px-1.5 py-0.5 bg-surface-container-highest font-label text-[10px] uppercase tracking-widest text-on-surface-variant">
-                          {displayData.boat_preference}
-                        </span>
-                      )}
-                      {displayData.own_boat === 'Yes' && (
-                        <span className="px-1.5 py-0.5 bg-tertiary-container text-tertiary font-label text-[10px] uppercase tracking-widest">
-                          Own boat: Yes
-                        </span>
-                      )}
-                      {displayData.own_boat === 'No' && (
-                        <span className="px-1.5 py-0.5 bg-surface-container-highest text-on-surface-variant font-label text-[10px] uppercase tracking-widest">
-                          Own boat: No
-                        </span>
-                      )}
-                      {displayData.own_boat === 'Maybe' && (
-                        <span className="px-1.5 py-0.5 bg-surface-container-highest text-on-surface-variant font-label text-[10px] uppercase tracking-widest border border-outline-variant/40">
-                          Own boat: Maybe
                         </span>
                       )}
                       <span
@@ -749,18 +442,6 @@ export default function Team() {
                               <span className="tactical-label">Weight</span>
                               <p className="font-mono text-sm text-on-surface mt-1">
                                 {member.paddler_weight || '---'}
-                              </p>
-                            </div>
-                            <div>
-                              <span className="tactical-label">Boat Preference</span>
-                              <p className="font-mono text-sm text-on-surface mt-1">
-                                {member.boat_preference || '---'}
-                              </p>
-                            </div>
-                            <div>
-                              <span className="tactical-label">Own Boat</span>
-                              <p className="font-mono text-sm text-on-surface mt-1">
-                                {member.own_boat || '---'}
                               </p>
                             </div>
                           </div>
@@ -894,7 +575,7 @@ export default function Team() {
                               Paddler Specs
                             </h3>
                           </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                               <label className="tactical-label block mb-1">Height</label>
                               <input
@@ -914,32 +595,6 @@ export default function Team() {
                                 value={editDraft.paddler_weight}
                                 onChange={(e) => updateDraft('paddler_weight', e.target.value)}
                               />
-                            </div>
-                            <div>
-                              <label className="tactical-label block mb-1">Boat Preference</label>
-                              <select
-                                className={selectClasses}
-                                value={editDraft.boat_preference}
-                                onChange={(e) => updateDraft('boat_preference', e.target.value)}
-                              >
-                                <option value="">— Unassigned —</option>
-                                {BOAT_PREFERENCE_OPTIONS.map((opt) => (
-                                  <option key={opt} value={opt}>{opt}</option>
-                                ))}
-                              </select>
-                            </div>
-                            <div>
-                              <label className="tactical-label block mb-1">Own Boat</label>
-                              <select
-                                className={selectClasses}
-                                value={editDraft.own_boat}
-                                onChange={(e) => updateDraft('own_boat', e.target.value)}
-                              >
-                                <option value="">— Unspecified —</option>
-                                <option value="Yes">Yes</option>
-                                <option value="No">No</option>
-                                <option value="Maybe">Maybe</option>
-                              </select>
                             </div>
                           </div>
                         </div>
@@ -1044,7 +699,6 @@ export default function Team() {
               </button>
             </div>
           </div>
-          )}
         </div>
       </div>
 
@@ -1059,67 +713,6 @@ export default function Team() {
             </button>
           </div>
 
-          {/* Boat Type Breakdown Chart */}
-          <div className="surface-card p-4">
-            <button
-              onClick={() => setChartCollapsed((c) => !c)}
-              className="w-full flex items-center gap-2 text-left"
-            >
-              <span className="material-symbols-outlined text-base text-tertiary">bar_chart</span>
-              <h3 className="font-display text-xs font-bold text-primary uppercase tracking-wider flex-1">
-                Boat Type Breakdown
-              </h3>
-              <span className={`material-symbols-outlined text-base text-on-surface-variant transition-transform ${chartCollapsed ? '' : 'rotate-180'}`}>
-                expand_more
-              </span>
-            </button>
-            {!chartCollapsed && (() => {
-              const chartRows: Array<{ key: BoatGroup; count: number; color: string }> = [
-                { key: 'Play', count: grouped['Play'].length, color: 'bg-tertiary' },
-                { key: 'Half Slice', count: grouped['Half Slice'].length, color: 'bg-primary' },
-                { key: 'Full Volume', count: grouped['Full Volume'].length, color: 'bg-tertiary-container' },
-                { key: 'Unassigned', count: grouped['Unassigned'].length, color: 'bg-outline-variant/40' },
-              ]
-              const max = Math.max(1, ...chartRows.map((r) => r.count))
-              return (
-                <div className="space-y-2.5 mt-3">
-                  {chartRows.map((row) => {
-                    const pct = totalMembers > 0 ? Math.round((row.count / totalMembers) * 100) : 0
-                    const widthPct = (row.count / max) * 100
-                    return (
-                      <div key={row.key}>
-                        <div className="flex items-baseline justify-between mb-1">
-                          <span className="font-label text-[10px] text-on-surface-variant uppercase tracking-wider">
-                            {row.key}
-                          </span>
-                          <div className="flex items-baseline gap-1.5">
-                            <span className="font-mono text-sm text-on-surface">
-                              {String(row.count).padStart(2, '0')}
-                            </span>
-                            <span className="font-mono text-[9px] text-outline">
-                              {pct}%
-                            </span>
-                          </div>
-                        </div>
-                        <div className="h-2 bg-surface-container-highest overflow-hidden">
-                          <div
-                            className={`h-full ${row.color} transition-all`}
-                            style={{ width: `${widthPct}%` }}
-                          />
-                        </div>
-                      </div>
-                    )
-                  })}
-                  <div className="pt-3 mt-3 border-t border-outline-variant/20 flex items-baseline justify-between">
-                    <span className="tactical-label">Total</span>
-                    <span className="font-mono text-sm text-on-surface">
-                      {String(totalMembers).padStart(2, '0')}
-                    </span>
-                  </div>
-                </div>
-              )
-            })()}
-          </div>
         </div>
       </aside>
     </div>
