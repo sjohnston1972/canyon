@@ -13,6 +13,8 @@ interface BoatRecord extends RecordModel {
   supplier: string
   available_count: number
   sort_order: number
+  conflict_resolved: boolean
+  conflict_note: string
 }
 
 interface BoatChoiceRecord extends RecordModel {
@@ -66,6 +68,9 @@ export default function Boats() {
   const [moveError, setMoveError] = useState<string | null>(null)
   const [confirmUnsetId, setConfirmUnsetId] = useState<string | null>(null)
   const [unsettingId, setUnsettingId] = useState<string | null>(null)
+  // Per-boat note drafts while resolving/editing a conflict, keyed by boat id.
+  const [conflictNotes, setConflictNotes] = useState<Record<string, string>>({})
+  const [resolvingId, setResolvingId] = useState<string | null>(null)
 
   const loading = boatsLoading || choicesLoading || membersLoading
 
@@ -123,6 +128,48 @@ export default function Boats() {
       .map((b) => ({ boat: b, firstPicks: demand.get(b.id)!.first }))
       .sort((a, b) => b.firstPicks - a.firstPicks)
   }, [boats, demand])
+
+  const activeConflicts = useMemo(() => conflicts.filter((c) => !c.boat.conflict_resolved), [conflicts])
+  const resolvedConflicts = useMemo(() => conflicts.filter((c) => c.boat.conflict_resolved), [conflicts])
+
+  async function resolveConflict(boatId: string) {
+    setResolvingId(boatId)
+    try {
+      // Use the typed draft if there is one; otherwise keep any note already on the boat
+      // (so reopening then re-resolving without retyping doesn't wipe the note).
+      const draft = conflictNotes[boatId]
+      const note = draft !== undefined ? draft.trim() : (boatById.get(boatId)?.conflict_note ?? '')
+      await updateBoat(boatId, { conflict_resolved: true, conflict_note: note })
+      setConflictNotes((prev) => { const next = { ...prev }; delete next[boatId]; return next })
+    } catch (err) {
+      console.error('Failed to resolve conflict', err)
+    } finally {
+      setResolvingId(null)
+    }
+  }
+
+  async function reopenConflict(boatId: string) {
+    setResolvingId(boatId)
+    try {
+      await updateBoat(boatId, { conflict_resolved: false })
+    } catch (err) {
+      console.error('Failed to reopen conflict', err)
+    } finally {
+      setResolvingId(null)
+    }
+  }
+
+  async function saveConflictNote(boatId: string, note: string) {
+    setResolvingId(boatId)
+    try {
+      await updateBoat(boatId, { conflict_note: note.trim() })
+      setConflictNotes((prev) => { const next = { ...prev }; delete next[boatId]; return next })
+    } catch (err) {
+      console.error('Failed to save conflict note', err)
+    } finally {
+      setResolvingId(null)
+    }
+  }
 
   const picksByBoat = useMemo(() => {
     return boats
@@ -370,29 +417,124 @@ export default function Boats() {
 
           {/* ── Conflicts banner — only in All view, only if conflicts ── */}
           {activeCategory === 'All' && conflicts.length > 0 && (
-            <div className="border-l-4 border-error bg-error-container/30 p-4">
+            <div className={`border-l-4 p-4 ${activeConflicts.length > 0 ? 'border-error bg-error-container/30' : 'border-tertiary bg-tertiary-container/20'}`}>
               <div className="flex items-start gap-3">
-                <span className="material-symbols-outlined text-error mt-0.5">warning</span>
+                <span className={`material-symbols-outlined mt-0.5 ${activeConflicts.length > 0 ? 'text-error' : 'text-tertiary'}`}>
+                  {activeConflicts.length > 0 ? 'warning' : 'task_alt'}
+                </span>
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-display text-sm font-bold text-error uppercase tracking-wider">
-                    {conflicts.length} Conflict{conflicts.length === 1 ? '' : 's'} — Demand Exceeds Supply
+                  <h3 className={`font-display text-sm font-bold uppercase tracking-wider ${activeConflicts.length > 0 ? 'text-error' : 'text-tertiary'}`}>
+                    {activeConflicts.length > 0
+                      ? `${activeConflicts.length} Conflict${activeConflicts.length === 1 ? '' : 's'} — Demand Exceeds Supply`
+                      : 'All Conflicts Resolved'}
                   </h3>
                   <p className="tactical-label normal-case tracking-normal mt-0.5">
-                    More paddlers want these boats as their 1st choice than there are hulls available.
+                    {activeConflicts.length > 0
+                      ? 'More paddlers want these boats as their 1st choice than there are hulls available.'
+                      : 'Every supply conflict has been reviewed and cleared.'}
                   </p>
-                  <ul className="mt-3 space-y-1.5">
-                    {conflicts.map(({ boat, firstPicks }) => (
-                      <li key={boat.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                        <span className="font-mono text-sm font-bold text-error">{firstPicks}</span>
-                        <span className="font-mono text-xs text-on-surface-variant">want</span>
-                        <span className="font-display text-xs font-semibold text-on-surface uppercase tracking-wider">{boat.name}</span>
-                        <span className="font-mono text-xs text-on-surface-variant">— only</span>
-                        <span className="font-mono text-sm font-bold text-on-surface">{boat.available_count || 0}</span>
-                        <span className="font-mono text-xs text-on-surface-variant">available</span>
-                        <span className="font-mono text-[10px] text-outline">[{boat.supplier}]</span>
-                      </li>
-                    ))}
-                  </ul>
+
+                  {/* Active (unresolved) conflicts — each can be noted + marked resolved */}
+                  {activeConflicts.length > 0 && (
+                    <ul className="mt-3 space-y-3">
+                      {activeConflicts.map(({ boat, firstPicks }) => (
+                        <li key={boat.id} className="border-t border-error/15 pt-3 first:border-t-0 first:pt-0">
+                          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                            <span className="font-mono text-sm font-bold text-error">{firstPicks}</span>
+                            <span className="font-mono text-xs text-on-surface-variant">want</span>
+                            <span className="font-display text-xs font-semibold text-on-surface uppercase tracking-wider">{boat.name}</span>
+                            <span className="font-mono text-xs text-on-surface-variant">— only</span>
+                            <span className="font-mono text-sm font-bold text-on-surface">{boat.available_count || 0}</span>
+                            <span className="font-mono text-xs text-on-surface-variant">available</span>
+                            <span className="font-mono text-[10px] text-outline">[{boat.supplier}]</span>
+                          </div>
+                          <div className="flex flex-col sm:flex-row gap-2 mt-2">
+                            <input
+                              className="flex-1 bg-surface-container-lowest text-on-surface font-mono text-xs border-b-2 border-outline-variant/30 focus:border-primary focus:outline-none px-2 py-1.5"
+                              placeholder="Resolution note (e.g. ordering 2 more, or Sam taking 2nd choice)"
+                              value={conflictNotes[boat.id] ?? ''}
+                              onChange={(e) => setConflictNotes((prev) => ({ ...prev, [boat.id]: e.target.value }))}
+                            />
+                            <button
+                              onClick={() => resolveConflict(boat.id)}
+                              disabled={resolvingId === boat.id}
+                              className="flex items-center justify-center gap-1.5 px-3 py-2 bg-tertiary-container text-on-tertiary font-label text-[10px] uppercase tracking-widest hover:brightness-95 transition-colors disabled:opacity-50 flex-shrink-0"
+                            >
+                              <span className="material-symbols-outlined text-sm">check_circle</span>
+                              Mark resolved
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {/* Resolved conflicts — note shown, can edit note or reopen */}
+                  {resolvedConflicts.length > 0 && (
+                    <div className={activeConflicts.length > 0 ? 'mt-4 pt-3 border-t border-outline-variant/20' : 'mt-3'}>
+                      <p className="tactical-label mb-2">Resolved ({resolvedConflicts.length})</p>
+                      <ul className="space-y-2">
+                        {resolvedConflicts.map(({ boat, firstPicks }) => {
+                          const editing = boat.id in conflictNotes
+                          return (
+                            <li key={boat.id} className="flex flex-col gap-1.5 bg-surface-container-lowest/60 p-2">
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                <span className="material-symbols-outlined text-tertiary text-base">task_alt</span>
+                                <span className="font-display text-xs font-semibold text-on-surface uppercase tracking-wider">{boat.name}</span>
+                                <span className="font-mono text-[10px] text-outline">{firstPicks} want / {boat.available_count || 0} avail · [{boat.supplier}]</span>
+                                <button
+                                  onClick={() => reopenConflict(boat.id)}
+                                  disabled={resolvingId === boat.id}
+                                  className="ml-auto flex items-center gap-1 px-2 py-1 font-label text-[10px] uppercase tracking-widest text-on-surface-variant hover:text-error transition-colors disabled:opacity-50"
+                                >
+                                  <span className="material-symbols-outlined text-sm">undo</span>
+                                  Reopen
+                                </button>
+                              </div>
+                              {editing ? (
+                                <div className="flex flex-col sm:flex-row gap-2 pl-6">
+                                  <input
+                                    className="flex-1 bg-surface-container-lowest text-on-surface font-mono text-xs border-b-2 border-outline-variant/30 focus:border-primary focus:outline-none px-2 py-1.5"
+                                    placeholder="Resolution note"
+                                    value={conflictNotes[boat.id]}
+                                    onChange={(e) => setConflictNotes((prev) => ({ ...prev, [boat.id]: e.target.value }))}
+                                  />
+                                  <div className="flex gap-1 flex-shrink-0">
+                                    <button
+                                      onClick={() => saveConflictNote(boat.id, conflictNotes[boat.id])}
+                                      disabled={resolvingId === boat.id}
+                                      className="flex items-center gap-1 px-2 py-1.5 bg-tertiary-container text-on-tertiary font-label text-[10px] uppercase tracking-widest hover:brightness-95 transition-colors disabled:opacity-50"
+                                    >
+                                      <span className="material-symbols-outlined text-sm">check</span>Save
+                                    </button>
+                                    <button
+                                      onClick={() => setConflictNotes((prev) => { const next = { ...prev }; delete next[boat.id]; return next })}
+                                      className="flex items-center gap-1 px-2 py-1.5 bg-surface-container-high text-on-surface-variant font-label text-[10px] uppercase tracking-widest hover:bg-surface-container-highest transition-colors"
+                                    >
+                                      <span className="material-symbols-outlined text-sm">close</span>
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex items-start gap-1.5 pl-6">
+                                  <span className="font-body text-xs text-on-surface-variant italic flex-1">
+                                    {boat.conflict_note ? `“${boat.conflict_note}”` : 'No note added.'}
+                                  </span>
+                                  <button
+                                    onClick={() => setConflictNotes((prev) => ({ ...prev, [boat.id]: boat.conflict_note || '' }))}
+                                    className="flex items-center gap-1 px-2 py-0.5 font-label text-[10px] uppercase tracking-widest text-outline hover:text-on-surface transition-colors flex-shrink-0"
+                                  >
+                                    <span className="material-symbols-outlined text-sm">edit</span>
+                                    {boat.conflict_note ? 'Edit note' : 'Add note'}
+                                  </button>
+                                </div>
+                              )}
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
