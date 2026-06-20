@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useCollection } from '@/hooks/useCollection'
 import { loadFxData, type FxData, type FxHistoryPoint } from '@/lib/fx'
+import LedgerImport from '@/components/finance/LedgerImport'
 import type { RecordModel } from 'pocketbase'
 
 // --- Types ---
@@ -809,6 +810,7 @@ function LedgerSection({ ledger, team, fx, createLedger, updateLedger, removeLed
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState<Partial<LedgerEntry>>({})
   const [filter, setFilter] = useState<'all' | 'IN' | 'OUT'>('all')
+  const [importing, setImporting] = useState(false)
 
   const paddlerNames = team.map((m) => `${m.first_name} ${m.last_name}`.trim()).filter(Boolean).sort()
 
@@ -885,6 +887,13 @@ function LedgerSection({ ledger, team, fx, createLedger, updateLedger, removeLed
             ))}
           </div>
           <button
+            onClick={() => setImporting(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-container-high text-tertiary font-label text-xs uppercase tracking-widest hover:bg-surface-container-highest transition-colors"
+            title="Import from a file with the agent"
+          >
+            <span className="material-symbols-outlined text-sm">upload_file</span>Import
+          </button>
+          <button
             onClick={startNew}
             disabled={editingId !== null}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-container-high text-on-surface font-label text-xs uppercase tracking-widest hover:bg-surface-container-highest disabled:opacity-40 transition-colors"
@@ -893,6 +902,10 @@ function LedgerSection({ ledger, team, fx, createLedger, updateLedger, removeLed
           </button>
         </div>
       </div>
+
+      {importing && (
+        <LedgerImport fx={fx} createLedger={createLedger} onClose={() => setImporting(false)} />
+      )}
 
       <div className="surface-card p-0 overflow-hidden">
         {/* Desktop header */}
