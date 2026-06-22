@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { useTheme } from '@/hooks/useTheme'
 import ChatBot from '@/components/chat/ChatBot'
+import FeatureAnnouncement from '@/components/common/FeatureAnnouncement'
 
 const navItems = [
   { to: '/command', label: 'Timeline', icon: 'explore' },
@@ -131,6 +132,9 @@ export default function AppShell() {
 
       {/* Persistent chat assistant — available on all pages inside the shell */}
       <ChatBot />
+
+      {/* Full-screen "what's new" announcement on first access after a release */}
+      <FeatureAnnouncement />
     </div>
   )
 }

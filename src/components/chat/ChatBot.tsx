@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import pb from '@/lib/pocketbase'
 import { useCollection } from '@/hooks/useCollection'
+import { loadFxData } from '@/lib/fx'
 import { waypoints, isMajorRapid } from '@/data/waypoints'
 import type { RecordModel } from 'pocketbase'
 
@@ -219,6 +220,13 @@ That's it. Do **not** invent or reference tiles that don't exist (no "Edit My Pr
 
 IMPORTANT: A "LIVE EXPEDITION DATA" block is appended below with the actual data currently in this user's app (team manifest, rapids, equipment, finances, logistics, emergency info, rafting reference). When answering factual questions ("who's on the team", "what's our budget", "what trauma kits do we carry", etc.) — pull directly from that data. Do NOT just point users to a tab when the answer is in the data block. Only suggest a page when the answer genuinely isn't in the data.
 
+NEW FEATURES (June 2026) — be ready to explain these when asked "what's new", "how do I...", etc.:
+- **Personal Kit** (/gear → Personal Kit tab): each paddler builds their own kit list. Pick your name, add gear from the outfitter catalogue (prices included) or add custom items; it keeps a running tally of your personal expense. Gear already covered by the trip fee (Full Rig, Complete Kitchen, Whole Shabang, Toilet System) is shown separately as "Included With Your Trip" and is NOT part of the personal tally.
+- **Ledger Import** (/finances → Ledger → Import button): upload a bank statement, receipt, or transaction list (TXT, CSV, photo, or PDF). The app reads it and proposes ledger entries to review and tick before committing. Nothing saves until confirmed; non-GBP rows convert at the live rate.
+
+FIXING FINANCE CONVERSIONS:
+You can fix currency-conversion problems on ledger entries when the user asks. The LIVE FINANCE LEDGER block below lists each entry with its id, amount, currency, fx rate, and converted GBP amount, and flags rows whose amount_gbp looks wrong. The correct conversion is: amount_gbp = (ccy is GBP) ? amount : round(amount × fx_gbp, 2). When an entry has no sensible fx rate, use the CURRENT USD→GBP RATE shown in that block. When the user asks you to fix or recompute conversions, work out the corrected values and call the **update_ledger_entries** tool — pass each affected entry's id and corrected fields, and ALWAYS include the recomputed amount_gbp. Only touch entries that are genuinely wrong. The app shows the user your proposed changes and applies them only after they confirm, so don't claim anything is changed until that happens.
+
 FORMATTING:
 - When you reference an app page, write the path as plain text (e.g. /map, /command, /team, /gear, /finances, /logistics, /emergency, /rafting). The UI will turn these into clickable links automatically — do NOT wrap them in markdown.
 - For external links use standard markdown syntax: [link text](https://...)
@@ -227,11 +235,79 @@ FORMATTING:
 
 Be concise and direct. Use technical paddling/whitewater terminology when appropriate.`
 
+interface LedgerEntryRecord extends RecordModel {
+  description: string
+  category: string
+  amount: number
+  paid_by: string
+  date: string
+  direction: string
+  ccy: string
+  fx_gbp: number
+  amount_gbp: number
+  note: string
+}
+
+interface FinanceUpdate {
+  id: string
+  amount?: number
+  ccy?: string
+  fx_gbp?: number
+  amount_gbp?: number
+  description?: string
+}
+
+// Tool that lets Hance fix currency/conversion problems on ledger entries.
+// tool_choice is left as auto, so it's only used when the user actually asks for a fix.
+const FINANCE_TOOL = {
+  name: 'update_ledger_entries',
+  description:
+    "Fix currency or conversion problems on existing finance ledger entries. Provide each affected entry's id plus the corrected fields, and always include the recomputed amount_gbp (= amount when GBP, else amount × fx_gbp rounded to 2dp).",
+  input_schema: {
+    type: 'object',
+    properties: {
+      updates: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'The ledger entry id to update' },
+            amount: { type: 'number' },
+            ccy: { type: 'string', enum: ['GBP', 'USD', 'EUR'] },
+            fx_gbp: { type: 'number' },
+            amount_gbp: { type: 'number' },
+            description: { type: 'string' },
+          },
+          required: ['id'],
+        },
+      },
+      reason: { type: 'string', description: 'Short explanation of what was wrong.' },
+    },
+    required: ['updates'],
+  },
+}
+
+// Build a human-readable confirmation of the fixes Hance proposes, shown before applying.
+function buildFinanceConfirmSummary(updates: FinanceUpdate[], byId: Map<string, LedgerEntryRecord>): string {
+  const lines = updates.map((u) => {
+    const cur = byId.get(u.id)
+    const name = cur ? (cur.description || cur.note || u.id) : u.id
+    const bits: string[] = []
+    if (u.ccy && (!cur || u.ccy !== cur.ccy)) bits.push(`currency → ${u.ccy}`)
+    if (u.amount != null && (!cur || u.amount !== cur.amount)) bits.push(`amount → ${u.amount}`)
+    if (u.fx_gbp != null && (!cur || u.fx_gbp !== cur.fx_gbp)) bits.push(`fx → ${u.fx_gbp}`)
+    if (u.amount_gbp != null && (!cur || u.amount_gbp !== cur.amount_gbp)) bits.push(`GBP → £${u.amount_gbp}`)
+    return `- **${name}**: ${bits.length ? bits.join(', ') : 'no change'}`
+  })
+  return `I'd make these fixes to the ledger:\n\n${lines.join('\n')}\n\nApply them? (yes / no)`
+}
+
 export default function ChatBot() {
   // Live expedition data — used to ground the assistant's responses
   const { records: teamMembers } = useCollection<TeamMemberRecord>('team_members')
   const { records: boats } = useCollection<BoatRecord>('boats', { sort: 'sort_order' })
   const { records: boatChoices } = useCollection<BoatChoiceRecord>('boat_choices')
+  const { records: finances } = useCollection<LedgerEntryRecord>('finances', { sort: '-date' })
 
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -261,8 +337,22 @@ export default function ChatBot() {
     }
   })
   const [boatWiz, setBoatWiz] = useState<BoatWizardState | null>(null)
+  // Finance-fix flow: a proposed set of ledger conversion fixes awaiting user confirmation.
+  const [pendingFinance, setPendingFinance] = useState<{ updates: FinanceUpdate[]; reason?: string } | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  // Current USD→GBP rate, used as a fallback when recomputing a fix client-side.
+  const fxRef = useRef(0.75)
+
+  const financesById = useMemo(() => {
+    const m = new Map<string, LedgerEntryRecord>()
+    for (const f of finances) m.set(f.id, f)
+    return m
+  }, [finances])
+
+  useEffect(() => {
+    loadFxData(false).then((d) => { fxRef.current = d.rate }).catch(() => { /* keep fallback */ })
+  }, [])
 
   // Keep keyboard up on mobile during wizards by refocusing after each interaction
   const refocusInput = useCallback(() => {
@@ -644,7 +734,7 @@ export default function ChatBot() {
       const apiMessages = newMessages.map((m) => ({ role: m.role, content: m.content }))
 
       // Fetch live data from all relevant collections in parallel
-      const dynamicContext = await buildExpeditionContext(teamMembers, boats, boatChoices)
+      const dynamicContext = await buildExpeditionContext(teamMembers, boats, boatChoices, finances)
 
       const res = await fetch('/api/chat', {
         method: 'POST',
@@ -652,6 +742,7 @@ export default function ChatBot() {
         body: JSON.stringify({
           messages: apiMessages,
           system: SYSTEM_PROMPT + dynamicContext,
+          tools: [FINANCE_TOOL],
         }),
       })
 
@@ -660,6 +751,24 @@ export default function ChatBot() {
         appendMessage('assistant', `Error: ${data.error || 'Failed to reach the assistant'}`)
         return
       }
+
+      // Tool use: Hance wants to fix ledger conversions — show any text, then stage the
+      // proposed changes for the user to confirm (nothing is written yet).
+      if (data.stop_reason === 'tool_use' && Array.isArray(data.blocks)) {
+        if (data.content) appendMessage('assistant', data.content)
+        const toolUse = data.blocks.find(
+          (b: { type?: string; name?: string }) => b.type === 'tool_use' && b.name === 'update_ledger_entries'
+        )
+        const updates: FinanceUpdate[] = toolUse?.input?.updates || []
+        if (updates.length > 0) {
+          setPendingFinance({ updates, reason: toolUse.input.reason })
+          appendMessage('assistant', buildFinanceConfirmSummary(updates, financesById))
+        } else if (!data.content) {
+          appendMessage('assistant', "I meant to fix something but couldn't pin down the change — tell me which entry and what's wrong.")
+        }
+        return
+      }
+
       appendMessage('assistant', data.content || '(no response)')
     } catch (err) {
       console.error('Chat error:', err)
@@ -669,10 +778,67 @@ export default function ChatBot() {
     }
   }
 
+  // Apply the staged ledger fixes to PocketBase (recomputing amount_gbp defensively).
+  const applyFinanceFix = useCallback(async (action: { updates: FinanceUpdate[] }) => {
+    setSending(true)
+    let n = 0
+    try {
+      for (const u of action.updates) {
+        const cur = financesById.get(u.id)
+        if (!cur) continue
+        const patch: Partial<LedgerEntryRecord> = {}
+        if (u.amount != null) patch.amount = u.amount
+        if (u.ccy) patch.ccy = u.ccy
+        if (u.fx_gbp != null) patch.fx_gbp = u.fx_gbp
+        if (u.description) patch.description = u.description
+        if (u.amount_gbp != null) {
+          patch.amount_gbp = u.amount_gbp
+        } else {
+          const amount = u.amount != null ? u.amount : cur.amount
+          const ccy = u.ccy || cur.ccy || 'GBP'
+          const fxr = u.fx_gbp != null ? u.fx_gbp : (cur.fx_gbp || fxRef.current)
+          patch.amount_gbp = ccy === 'GBP' ? amount : Math.round(amount * fxr * 100) / 100
+        }
+        await pb.collection('finances').update(u.id, patch)
+        n++
+      }
+      appendMessage('assistant', `Done — fixed ${n} ${n === 1 ? 'entry' : 'entries'}. Have a look on /finances.`)
+    } catch (err) {
+      console.error('Failed to apply finance fix:', err)
+      appendMessage('assistant', `Sorry — couldn't apply the fix. ${err}. You can edit the entries by hand on /finances.`)
+    } finally {
+      setSending(false)
+      setPendingFinance(null)
+    }
+  }, [financesById])
+
+  const handleFinanceConfirm = async (yes: boolean) => {
+    if (!pendingFinance || sending) return
+    appendMessage('user', yes ? 'Yes, apply' : 'No')
+    if (yes) {
+      await applyFinanceFix(pendingFinance)
+    } else {
+      setPendingFinance(null)
+      appendMessage('assistant', 'OK — left the ledger as it is.')
+    }
+  }
+
   const handleSend = async () => {
     const text = input.trim()
     if (!text || sending) return
     setInput('')
+
+    // A finance fix is staged — interpret the next message as the yes/no answer.
+    if (pendingFinance) {
+      appendMessage('user', text)
+      if (/^(y|yes|confirm|do it|go|ok)/i.test(text)) {
+        await applyFinanceFix(pendingFinance)
+      } else {
+        setPendingFinance(null)
+        appendMessage('assistant', 'OK — left the ledger as it is.')
+      }
+      return
+    }
 
     if (mode === 'onboarding') {
       appendMessage('user', text)
@@ -1001,6 +1167,26 @@ export default function ChatBot() {
               </div>
             )}
 
+            {/* Finance-fix confirmation tiles */}
+            {mode === 'free' && pendingFinance && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                <button
+                  onClick={() => handleFinanceConfirm(true)}
+                  disabled={sending}
+                  className="px-3 py-1.5 bg-tertiary-container text-on-tertiary font-label text-[11px] uppercase tracking-widest hover:brightness-110 transition-all disabled:opacity-50"
+                >
+                  Yes, Apply Fix
+                </button>
+                <button
+                  onClick={() => handleFinanceConfirm(false)}
+                  disabled={sending}
+                  className="px-3 py-1.5 bg-surface-container-high text-on-surface-variant font-label text-[11px] uppercase tracking-widest hover:bg-error-container hover:text-error transition-colors disabled:opacity-50"
+                >
+                  No, Leave It
+                </button>
+              </div>
+            )}
+
             <div className="flex gap-2">
               <textarea
                 ref={textareaRef}
@@ -1041,6 +1227,7 @@ async function buildExpeditionContext(
   teamMembers: TeamMemberRecord[],
   boats: BoatRecord[],
   boatChoices: BoatChoiceRecord[],
+  finances: LedgerEntryRecord[],
 ): Promise<string> {
   // Fetch all collections in parallel — non-fatal if any single one fails.
   const safeFetch = async <T,>(name: string): Promise<T[]> => {
@@ -1052,9 +1239,12 @@ async function buildExpeditionContext(
     }
   }
 
+  // Live USD→GBP rate so Hance can recompute conversions correctly.
+  let fxRate = 0.75
+  try { fxRate = (await loadFxData(false)).rate } catch { /* keep fallback */ }
+
   const [
     equipment,
-    finances,
     logistics,
     emergencyContacts,
     contingencyPlans,
@@ -1068,7 +1258,6 @@ async function buildExpeditionContext(
     raftingVideos,
   ] = await Promise.all([
     safeFetch<any>('equipment'),
-    safeFetch<any>('finances'),
     safeFetch<any>('logistics_entries'),
     safeFetch<any>('emergency_contacts'),
     safeFetch<any>('contingency_plans'),
@@ -1126,6 +1315,16 @@ async function buildExpeditionContext(
   const financesSummary = list(finances, (r) => {
     const amount = r.amount != null ? `$${r.amount}` : ''
     return `- ${r.description || r.name || '?'}${amount ? ` — ${amount}` : ''}${r.paid_by ? ` paid by ${r.paid_by}` : ''}${r.category ? ` [${r.category}]` : ''}`
+  })
+
+  // Detailed ledger with ids + conversion fields so Hance can spot and fix mis-conversions.
+  const ledgerDetail = list(finances, (r) => {
+    const amt = r.amount != null ? r.amount : 0
+    const ccy = r.ccy || 'GBP'
+    const expected = ccy === 'GBP' ? amt : Math.round(amt * (r.fx_gbp || fxRate) * 100) / 100
+    const off = Math.abs((r.amount_gbp || 0) - expected) > 0.01
+    const flag = off ? `  <-- CHECK: amount_gbp should be ~£${expected}` : ''
+    return `- id=${r.id} | ${r.date || 'no-date'} | ${r.direction || '?'} | ${r.description || r.note || '?'} | ${amt} ${ccy} | fx=${r.fx_gbp ?? '(none)'} | gbp=${r.amount_gbp ?? '(none)'}${flag}`
   })
 
   const logisticsSummary = list(logistics, (r) =>
@@ -1215,6 +1414,7 @@ MAJOR RAPIDS (Class 6+, ${majorRapids.length} of ${allRapidsCount} total rapids;
 ${rapidsSummary}` +
     sect(`EQUIPMENT (${equipment.length})`, equipSummary) +
     sect(`FINANCES (${finances.length} entries)`, financesSummary) +
+    sect(`LIVE FINANCE LEDGER — CURRENT USD→GBP RATE: ${fxRate.toFixed(4)} (use ids here to fix conversions via update_ledger_entries)`, ledgerDetail) +
     sect(`LOGISTICS (${logistics.length})`, logisticsSummary) +
     sect(`EMERGENCY CONTACTS (${emergencyContacts.length})`, contactsSummary) +
     sect(`CONTINGENCY PLANS (${contingencyPlans.length})`, contingencySummary) +

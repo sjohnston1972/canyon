@@ -17,6 +17,8 @@ routerAdd("POST", "/api/chat", (e) => {
 
   const messages = body && body.messages
   const system = body && body.system
+  const tools = body && body.tools
+  const toolChoice = body && body.tool_choice
 
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return e.json(400, { error: "Missing or empty 'messages' array" })
@@ -29,6 +31,11 @@ routerAdd("POST", "/api/chat", (e) => {
   }
   if (system) {
     requestPayload.system = system
+  }
+  // Optional tool use — lets Hance propose structured actions (e.g. fixing ledger conversions).
+  if (tools && Array.isArray(tools) && tools.length > 0) {
+    requestPayload.tools = tools
+    if (toolChoice) requestPayload.tool_choice = toolChoice
   }
 
   try {
@@ -53,10 +60,17 @@ routerAdd("POST", "/api/chat", (e) => {
     }
 
     const parsed = JSON.parse(res.raw)
-    // Surface only the assistant text + stop info to the client
-    const content = parsed.content && parsed.content[0] && parsed.content[0].text
+    // Concatenate any text blocks for the simple text path, and pass the full
+    // content array so the client can detect/handle tool_use blocks.
+    let text = ""
+    if (parsed.content && Array.isArray(parsed.content)) {
+      for (let i = 0; i < parsed.content.length; i++) {
+        if (parsed.content[i].type === "text") text += parsed.content[i].text
+      }
+    }
     return e.json(200, {
-      content: content || "",
+      content: text,
+      blocks: parsed.content || [],
       stop_reason: parsed.stop_reason,
       usage: parsed.usage,
     })
