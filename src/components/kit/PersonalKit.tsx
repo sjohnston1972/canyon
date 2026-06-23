@@ -372,12 +372,13 @@ export default function PersonalKit() {
           ) : (
             <div className="border border-outline-variant/20 overflow-hidden mb-10">
               {/* Desktop header */}
-              <div className="hidden md:grid grid-cols-[1fr_120px_110px_110px_90px] bg-surface-container-lowest px-4 py-2.5 border-b border-outline-variant/20">
+              <div className="hidden md:grid grid-cols-[1fr_96px_92px_104px_84px_56px] gap-x-3 bg-surface-container-lowest px-4 py-2.5 border-b border-outline-variant/20">
                 <span className="tactical-label">Item</span>
                 <span className="tactical-label text-right">Qty × Days</span>
                 <span className="tactical-label text-right">Unit</span>
                 <span className="tactical-label text-right">Line Total</span>
                 <span className="tactical-label text-right">Status</span>
+                <span />
               </div>
 
               {myKit.map((item) => {
@@ -427,7 +428,7 @@ export default function PersonalKit() {
                     ) : (
                       <>
                         {/* Desktop row */}
-                        <div className="hidden md:grid grid-cols-[1fr_120px_110px_110px_90px] px-4 py-3 items-center hover:bg-surface-container-high/40 transition-colors group">
+                        <div className="hidden md:grid grid-cols-[1fr_96px_92px_104px_84px_56px] gap-x-3 px-4 py-3 items-center hover:bg-surface-container-high/40 transition-colors group">
                           <div className="min-w-0">
                             <p className="font-body text-sm text-on-surface truncate">
                               {item.name}
@@ -444,10 +445,12 @@ export default function PersonalKit() {
                             {money(item.unit_price)}<span className="text-outline">{unitLabel(item.unit_type)}</span>
                           </span>
                           <span className="font-mono text-sm text-on-surface text-right font-medium">{money(lineTotal(item))}</span>
-                          <div className="flex items-center justify-end gap-1">
-                            <span className={`inline-block px-1.5 py-0.5 font-label text-[9px] uppercase tracking-widest ${statusStyle[item.status] || statusStyle.Planned}`}>
+                          <div className="flex justify-end">
+                            <span className={`inline-block px-1.5 py-0.5 font-label text-[9px] uppercase tracking-widest whitespace-nowrap ${statusStyle[item.status] || statusStyle.Planned}`}>
                               {item.status || 'Planned'}
                             </span>
+                          </div>
+                          <div className="flex items-center justify-end gap-0.5">
                             <button onClick={() => startEdit(item)} className="p-1 opacity-0 group-hover:opacity-100 hover:bg-surface-container-high transition-all">
                               <span className="material-symbols-outlined text-base text-outline">edit</span>
                             </button>
