@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useCollection } from '@/hooks/useCollection'
+import { isUnicornPaddler } from '@/lib/easterEgg'
 import type { RecordModel } from 'pocketbase'
 
 interface BoatRecord extends RecordModel {
@@ -43,13 +44,6 @@ const CATEGORY_META: Record<Category, { icon: string; tag: string; blurb: string
   'Creek':      { icon: 'terrain',        tag: 'CREEK', blurb: 'Big-volume displacement hulls — punches holes, charges big water.' },
   'Expedition': { icon: 'luggage',        tag: 'XP',    blurb: 'Self-support hulls with internal storage. Required for kayak self-support.' },
 }
-
-// Easter egg: Adri gets a joke "Inflatable Unicorn" in pride of place. It's display-only —
-// never a boats/boat_choices record, so it stays out of all demand/supply/chart/procurement
-// stats, and her real 1st/2nd/3rd picks are untouched.
-const UNICORN_MEMBER_ID = '15v1u62nja4rzk4'
-const isUnicornPaddler = (m: { id: string; first_name?: string; last_name?: string }) =>
-  m.id === UNICORN_MEMBER_ID || /adrif|yelgis/i.test(`${m.first_name ?? ''}${m.last_name ?? ''}`)
 
 type Pick = 'first' | 'second' | 'third'
 
@@ -886,7 +880,7 @@ export default function Boats() {
                       <span className="font-display text-[11px] font-bold uppercase tracking-widest text-pink-400">
                         Prime Steed · Inflatable Unicorn
                       </span>
-                      <span className="px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-widest bg-fuchsia-500/20 text-fuchsia-300">
+                      <span className="px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-widest bg-fuchsia-200 text-fuchsia-900">
                         00
                       </span>
                       <span className="tactical-label text-[9px] normal-case tracking-normal text-on-surface-variant hidden sm:inline">

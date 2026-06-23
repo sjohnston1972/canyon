@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useCollection } from '@/hooks/useCollection'
+import { isUnicornPaddler } from '@/lib/easterEgg'
 import type { RecordModel } from 'pocketbase'
 
 interface TeamMemberRecord extends RecordModel {
@@ -294,11 +295,17 @@ export default function Team() {
                   >
                     {/* Name */}
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-surface-container-highest flex items-center justify-center flex-shrink-0">
-                        <span className="font-mono text-[10px] text-on-surface-variant">
-                          {(displayData.first_name[0] || '?')}{(displayData.last_name[0] || '?')}
-                        </span>
-                      </div>
+                      {isUnicornPaddler({ id: memberId, first_name: displayData.first_name, last_name: displayData.last_name }) ? (
+                        <div className="w-8 h-8 bg-fuchsia-500/20 flex items-center justify-center flex-shrink-0">
+                          <span className="text-base leading-none">🦄</span>
+                        </div>
+                      ) : (
+                        <div className="w-8 h-8 bg-surface-container-highest flex items-center justify-center flex-shrink-0">
+                          <span className="font-mono text-[10px] text-on-surface-variant">
+                            {(displayData.first_name[0] || '?')}{(displayData.last_name[0] || '?')}
+                          </span>
+                        </div>
+                      )}
                       <div>
                         <p className="font-display text-sm font-semibold text-on-surface uppercase tracking-wider">
                           {displayData.last_name || '---'}, {displayData.first_name || '---'}
