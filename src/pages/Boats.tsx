@@ -44,6 +44,13 @@ const CATEGORY_META: Record<Category, { icon: string; tag: string; blurb: string
   'Expedition': { icon: 'luggage',        tag: 'XP',    blurb: 'Self-support hulls with internal storage. Required for kayak self-support.' },
 }
 
+// Easter egg: Adri gets a joke "Inflatable Unicorn" in pride of place. It's display-only —
+// never a boats/boat_choices record, so it stays out of all demand/supply/chart/procurement
+// stats, and her real 1st/2nd/3rd picks are untouched.
+const UNICORN_MEMBER_ID = '15v1u62nja4rzk4'
+const isUnicornPaddler = (m: { id: string; first_name?: string; last_name?: string }) =>
+  m.id === UNICORN_MEMBER_ID || /adrif|yelgis/i.test(`${m.first_name ?? ''}${m.last_name ?? ''}`)
+
 type Pick = 'first' | 'second' | 'third'
 
 const PICK_META: Record<Pick, { label: string; rank: string; color: string; tile: string }> = {
@@ -866,17 +873,38 @@ export default function Boats() {
             {members.map((m, idx) => {
               const choice = choicesByMember.get(m.id)
               const isEditing = editingMemberId === m.id
+              const isUnicorn = isUnicornPaddler(m)
               return (
                 <div
                   key={m.id}
                   className={`border-b border-outline-variant/10 ${idx % 2 === 0 ? 'bg-surface-container-low' : 'bg-surface-container-lowest'}`}
                 >
+                  {/* Pride of place — the one and only Inflatable Unicorn (not in any fleet stat) */}
+                  {isUnicorn && (
+                    <div className="flex items-center gap-2 px-4 py-2 border-b border-pink-400/30 bg-gradient-to-r from-pink-500/20 via-fuchsia-500/15 to-sky-400/20">
+                      <span className="text-lg leading-none">🦄</span>
+                      <span className="font-display text-[11px] font-bold uppercase tracking-widest text-pink-400">
+                        Prime Steed · Inflatable Unicorn
+                      </span>
+                      <span className="px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-widest bg-fuchsia-500/20 text-fuchsia-300">
+                        00
+                      </span>
+                      <span className="tactical-label text-[9px] normal-case tracking-normal text-on-surface-variant hidden sm:inline">
+                        Pride of place — magnificent, seaworthy-ish, not counted in fleet stats
+                      </span>
+                      <span className="ml-auto text-lg leading-none">🌈</span>
+                    </div>
+                  )}
                   <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_1fr_120px] gap-2 md:gap-0 items-center px-4 py-3">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-surface-container-highest flex items-center justify-center flex-shrink-0">
-                        <span className="font-mono text-[10px] text-on-surface-variant">
-                          {(m.first_name[0] || '?')}{(m.last_name[0] || '?')}
-                        </span>
+                      <div className={`w-8 h-8 flex items-center justify-center flex-shrink-0 ${isUnicorn ? 'bg-fuchsia-500/20' : 'bg-surface-container-highest'}`}>
+                        {isUnicorn ? (
+                          <span className="text-base leading-none">🦄</span>
+                        ) : (
+                          <span className="font-mono text-[10px] text-on-surface-variant">
+                            {(m.first_name[0] || '?')}{(m.last_name[0] || '?')}
+                          </span>
+                        )}
                       </div>
                       <div className="min-w-0">
                         <p className="font-display text-sm font-semibold text-on-surface uppercase tracking-wider truncate">
