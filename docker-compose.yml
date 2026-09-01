@@ -20,8 +20,9 @@ services:
       context: ./pocketbase
     container_name: canyon-db
     restart: unless-stopped
-    ports:
-      - "8203:8090"
+    # No published port: PocketBase (including its /_/ admin UI) is reached
+    # only via the nginx proxy on the `canyon` service, or from other
+    # containers on net_core at canyon-db:8090. See README "Admin access".
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     volumes:

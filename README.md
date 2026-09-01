@@ -54,16 +54,60 @@ docker compose build
 docker compose up -d
 ```
 
-4. Access:
+4. Create the superuser (one-time, no credentials are committed to this repo):
+```bash
+docker compose exec db /pb/pocketbase superuser upsert you@example.com 'a-strong-password'
+```
+
+5. Access:
    - **App**: http://localhost:8202
-   - **PocketBase Admin**: http://localhost:8203/_/
-   - Admin login: `admin@canyon.local` / `canyon2027`
+
+PocketBase itself has no published port — the app talks to it only through
+the nginx proxy above. See "Admin access" below for reaching `/_/`.
+
+### Admin access
+
+`canyon-db` (PocketBase) is not published on the host, so its `/_/` admin UI
+and raw API aren't reachable from the internet or your host browser by
+default. To reach it for local development or maintenance, pick one:
+
+- **`docker exec` into the container** and use the `pocketbase` CLI directly,
+  e.g. `docker compose exec db /pb/pocketbase superuser upsert ...`.
+- **A local compose override** — create `docker-compose.override.yml`
+  (already gitignored-friendly; do not commit it with real secrets) with:
+  ```yaml
+  services:
+    db:
+      ports:
+        - "127.0.0.1:8203:8090"
+  ```
+  then `docker compose up -d` to bind the admin UI to localhost only, and
+  remove the override when you're done.
+- **An SSH tunnel** to the host, e.g. `ssh -L 8203:localhost:8090 user@host`
+  after using the override above (or connecting to the container network
+  directly on the host).
 
 ### Environment Variables
 
 | Variable | Description |
 |----------|-------------|
 | `VITE_GOOGLE_MAPS_API_KEY` | Google Maps JavaScript API key |
+
+## Secrets
+
+- Real secrets (API keys, the PocketBase superuser password) belong only in
+  your local `.env` file, which is already listed in `.gitignore` and must
+  never be committed. Start from `.env.example`.
+- The PocketBase superuser account is created at runtime with
+  `./pocketbase superuser upsert EMAIL PASSWORD` (see Quick Start above) —
+  never hardcode it in a migration, compose file, or this README.
+- Crew member login accounts live in PocketBase's `users` auth collection;
+  create them from the admin UI (see "Admin access") rather than committing
+  credentials anywhere.
+- If you believe a secret has ever been committed to this repository, treat
+  it as burned: rotate/replace it immediately. Git history keeps old commits
+  even after a file is edited or deleted in a later commit, so removing a
+  value from the working tree does not remove it from history.
 
 ## Project Structure
 
