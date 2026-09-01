@@ -15,13 +15,14 @@ export function useCollection<T extends RecordModel>(
   const [records, setRecords] = useState<T[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const mountedRef = useRef(true)
   const optionsRef = useRef(options)
   optionsRef.current = options
 
   // Fetch + subscribe on mount
   useEffect(() => {
-    mountedRef.current = true
+    // Effect-local flag — unlike a shared ref, this can't be reset to `false`
+    // by a later remount, so a stale subscription can never pass the guard below.
+    let cancelled = false
 
     async function load() {
       try {
@@ -35,7 +36,7 @@ export function useCollection<T extends RecordModel>(
         if (optionsRef.current.filter) params.filter = optionsRef.current.filter
         if (optionsRef.current.expand) params.expand = optionsRef.current.expand
         const result = await pb.collection(collectionName).getFullList<T>(params as Record<string, string>)
-        if (mountedRef.current) {
+        if (!cancelled) {
           setRecords(result)
           setError(null)
         }
@@ -44,12 +45,12 @@ export function useCollection<T extends RecordModel>(
         const isAutoCancel = err && typeof err === 'object' && 'isAbort' in err && (err as { isAbort: boolean }).isAbort
         if (!isAutoCancel) {
           console.error(`Error fetching ${collectionName}:`, err)
-          if (mountedRef.current) {
+          if (!cancelled) {
             setError(`Failed to load ${collectionName}`)
           }
         }
       } finally {
-        if (mountedRef.current) setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
 
@@ -57,25 +58,39 @@ export function useCollection<T extends RecordModel>(
 
     // Real-time subscription
     let unsubFn: (() => void) | null = null
-    pb.collection(collectionName).subscribe<T>('*', (e) => {
-      if (!mountedRef.current) return
-      setRecords((prev) => {
-        switch (e.action) {
-          case 'create':
-            if (prev.some((r) => r.id === e.record.id)) return prev
-            return [...prev, e.record]
-          case 'update':
-            return prev.map((r) => (r.id === e.record.id ? e.record : r))
-          case 'delete':
-            return prev.filter((r) => r.id !== e.record.id)
-          default:
-            return prev
+    pb.collection(collectionName)
+      .subscribe<T>('*', (e) => {
+        if (cancelled) return
+        setRecords((prev) => {
+          switch (e.action) {
+            case 'create':
+              if (prev.some((r) => r.id === e.record.id)) return prev
+              return [...prev, e.record]
+            case 'update':
+              return prev.map((r) => (r.id === e.record.id ? e.record : r))
+            case 'delete':
+              return prev.filter((r) => r.id !== e.record.id)
+            default:
+              return prev
+          }
+        })
+      })
+      .then((unsub) => {
+        // Cleanup may already have run by the time this resolves (guaranteed on
+        // every StrictMode double-mount) — tear the subscription straight back
+        // down instead of stashing an unsub function nothing will ever call.
+        if (cancelled) {
+          unsub()
+        } else {
+          unsubFn = unsub
         }
       })
-    }).then((unsub) => { unsubFn = unsub })
+      .catch((err) => {
+        console.error(`Error subscribing to ${collectionName}:`, err)
+      })
 
     return () => {
-      mountedRef.current = false
+      cancelled = true
       if (unsubFn) unsubFn()
     }
   }, [collectionName])
