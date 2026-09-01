@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import pb from '@/lib/pocketbase'
 import { useCollection } from '@/hooks/useCollection'
 import { loadFxData } from '@/lib/fx'
+import { fxRateFor, type FxRates } from '@/lib/currency'
 import { waypoints, isMajorRapid } from '@/data/waypoints'
 import type { RecordModel } from 'pocketbase'
 
@@ -225,7 +226,7 @@ NEW FEATURES (June 2026) — be ready to explain these when asked "what's new", 
 - **Ledger Import** (/finances → Ledger → Import button): upload a bank statement, receipt, or transaction list (TXT, CSV, photo, or PDF). The app reads it and proposes ledger entries to review and tick before committing. Nothing saves until confirmed; non-GBP rows convert at the live rate.
 
 FIXING FINANCE CONVERSIONS:
-You can fix currency-conversion problems on ledger entries when the user asks. The LIVE FINANCE LEDGER block below lists each entry with its id, amount, currency, fx rate, and converted GBP amount, and flags rows whose amount_gbp looks wrong. The correct conversion is: amount_gbp = (ccy is GBP) ? amount : round(amount × fx_gbp, 2). When an entry has no sensible fx rate, use the CURRENT USD→GBP RATE shown in that block. When the user asks you to fix or recompute conversions, work out the corrected values and call the **update_ledger_entries** tool — pass each affected entry's id and corrected fields, and ALWAYS include the recomputed amount_gbp. Only touch entries that are genuinely wrong. The app shows the user your proposed changes and applies them only after they confirm, so don't claim anything is changed until that happens.
+You can fix currency-conversion problems on ledger entries when the user asks. The LIVE FINANCE LEDGER block below lists each entry with its id, amount, currency, fx rate, and converted GBP amount, and flags rows whose amount_gbp looks wrong. The correct conversion is: amount_gbp = (ccy is GBP) ? amount : round(amount × fx_gbp, 2) — where fx_gbp must be the rate for THAT ROW'S OWN CURRENCY, never a different currency's rate. When an entry has no sensible fx rate, use the CURRENT USD→GBP RATE for a USD row, or the CURRENT EUR→GBP RATE for a EUR row — both are shown in that block. Never apply the USD rate to a EUR row or vice versa. When the user asks you to fix or recompute conversions, work out the corrected values and call the **update_ledger_entries** tool — pass each affected entry's id and corrected fields, and ALWAYS include the recomputed amount_gbp. Only touch entries that are genuinely wrong. The app shows the user your proposed changes and applies them only after they confirm, so don't claim anything is changed until that happens.
 
 FORMATTING:
 - When you reference an app page, write the path as plain text (e.g. /map, /command, /team, /gear, /finances, /logistics, /emergency, /rafting). The UI will turn these into clickable links automatically — do NOT wrap them in markdown.
@@ -341,8 +342,8 @@ export default function ChatBot() {
   const [pendingFinance, setPendingFinance] = useState<{ updates: FinanceUpdate[]; reason?: string } | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  // Current USD→GBP rate, used as a fallback when recomputing a fix client-side.
-  const fxRef = useRef(0.75)
+  // Current USD→GBP and EUR→GBP rates, used as a fallback when recomputing a fix client-side.
+  const fxRef = useRef<FxRates>({ usdGbp: 0.75, eurGbp: 0.85 })
 
   const financesById = useMemo(() => {
     const m = new Map<string, LedgerEntryRecord>()
@@ -351,7 +352,9 @@ export default function ChatBot() {
   }, [finances])
 
   useEffect(() => {
-    loadFxData(false).then((d) => { fxRef.current = d.rate }).catch(() => { /* keep fallback */ })
+    loadFxData(false)
+      .then((d) => { fxRef.current = { usdGbp: d.usdGbp, eurGbp: d.eurGbp } })
+      .catch(() => { /* keep fallback */ })
   }, [])
 
   // Keep keyboard up on mobile during wizards by refocusing after each interaction
@@ -796,7 +799,7 @@ export default function ChatBot() {
         } else {
           const amount = u.amount != null ? u.amount : cur.amount
           const ccy = u.ccy || cur.ccy || 'GBP'
-          const fxr = u.fx_gbp != null ? u.fx_gbp : (cur.fx_gbp || fxRef.current)
+          const fxr = u.fx_gbp != null ? u.fx_gbp : (cur.fx_gbp || fxRateFor(ccy, fxRef.current))
           patch.amount_gbp = ccy === 'GBP' ? amount : Math.round(amount * fxr * 100) / 100
         }
         await pb.collection('finances').update(u.id, patch)
@@ -1239,9 +1242,12 @@ async function buildExpeditionContext(
     }
   }
 
-  // Live USD→GBP rate so Hance can recompute conversions correctly.
-  let fxRate = 0.75
-  try { fxRate = (await loadFxData(false)).rate } catch { /* keep fallback */ }
+  // Live USD→GBP and EUR→GBP rates so Hance can recompute conversions correctly per currency.
+  let fxRates: FxRates = { usdGbp: 0.75, eurGbp: 0.85 }
+  try {
+    const d = await loadFxData(false)
+    fxRates = { usdGbp: d.usdGbp, eurGbp: d.eurGbp }
+  } catch { /* keep fallback */ }
 
   const [
     equipment,
@@ -1318,10 +1324,15 @@ async function buildExpeditionContext(
   })
 
   // Detailed ledger with ids + conversion fields so Hance can spot and fix mis-conversions.
+  // Prefer the row's own stored fx_gbp (self-consistency check, so a row correctly computed
+  // at an earlier live rate isn't flagged just because the rate has since drifted). Only when
+  // fx_gbp is missing do we fall back to a live rate — and that fallback must match the row's
+  // OWN currency (eurGbp for EUR, usdGbp for USD), never a different currency's rate.
   const ledgerDetail = list(finances, (r) => {
     const amt = r.amount != null ? r.amount : 0
     const ccy = r.ccy || 'GBP'
-    const expected = ccy === 'GBP' ? amt : Math.round(amt * (r.fx_gbp || fxRate) * 100) / 100
+    const fxUsed = r.fx_gbp || fxRateFor(ccy, fxRates)
+    const expected = ccy === 'GBP' ? amt : Math.round(amt * fxUsed * 100) / 100
     const off = Math.abs((r.amount_gbp || 0) - expected) > 0.01
     const flag = off ? `  <-- CHECK: amount_gbp should be ~£${expected}` : ''
     return `- id=${r.id} | ${r.date || 'no-date'} | ${r.direction || '?'} | ${r.description || r.note || '?'} | ${amt} ${ccy} | fx=${r.fx_gbp ?? '(none)'} | gbp=${r.amount_gbp ?? '(none)'}${flag}`
@@ -1414,7 +1425,7 @@ MAJOR RAPIDS (Class 6+, ${majorRapids.length} of ${allRapidsCount} total rapids;
 ${rapidsSummary}` +
     sect(`EQUIPMENT (${equipment.length})`, equipSummary) +
     sect(`FINANCES (${finances.length} entries)`, financesSummary) +
-    sect(`LIVE FINANCE LEDGER — CURRENT USD→GBP RATE: ${fxRate.toFixed(4)} (use ids here to fix conversions via update_ledger_entries)`, ledgerDetail) +
+    sect(`LIVE FINANCE LEDGER — CURRENT USD→GBP RATE: ${fxRates.usdGbp.toFixed(4)}, CURRENT EUR→GBP RATE: ${fxRates.eurGbp.toFixed(4)} (use ids here to fix conversions via update_ledger_entries; use the rate matching each row's own ccy)`, ledgerDetail) +
     sect(`LOGISTICS (${logistics.length})`, logisticsSummary) +
     sect(`EMERGENCY CONTACTS (${emergencyContacts.length})`, contactsSummary) +
     sect(`CONTINGENCY PLANS (${contingencyPlans.length})`, contingencySummary) +
