@@ -8,6 +8,23 @@ interface UseCollectionOptions {
   expand?: string
 }
 
+/**
+ * Builds the PocketBase list-query params for a set of hook options. Shared
+ * by the initial load and refresh() so both always request the same sort,
+ * filter, and expand — exported for unit testing.
+ */
+export function buildListParams(options: UseCollectionOptions): Record<string, unknown> {
+  const params: Record<string, unknown> = {
+    // Disable PocketBase's automatic request cancellation — without this, two
+    // hooks fetching the same collection at the same time will cancel each other.
+    requestKey: null,
+  }
+  if (options.sort) params.sort = options.sort
+  if (options.filter) params.filter = options.filter
+  if (options.expand) params.expand = options.expand
+  return params
+}
+
 interface SortField {
   field: string
   desc: boolean
@@ -79,14 +96,7 @@ export function useCollection<T extends RecordModel>(
     async function load() {
       try {
         setLoading(true)
-        const params: Record<string, unknown> = {
-          // Disable PocketBase's automatic request cancellation — without this, two
-          // hooks fetching the same collection at the same time will cancel each other.
-          requestKey: null,
-        }
-        if (optionsRef.current.sort) params.sort = optionsRef.current.sort
-        if (optionsRef.current.filter) params.filter = optionsRef.current.filter
-        if (optionsRef.current.expand) params.expand = optionsRef.current.expand
+        const params = buildListParams(optionsRef.current)
         const result = await pb.collection(collectionName).getFullList<T>(params as Record<string, string>)
         if (!cancelled) {
           setRecords(result)
@@ -194,12 +204,13 @@ export function useCollection<T extends RecordModel>(
 
   const refresh = useCallback(async () => {
     try {
-      const params: Record<string, unknown> = { requestKey: null }
-      if (optionsRef.current.filter) params.filter = optionsRef.current.filter
+      const params = buildListParams(optionsRef.current)
       const result = await pb.collection(collectionName).getFullList<T>(params as Record<string, string>)
       setRecords(result)
+      setError(null)
     } catch (err) {
       console.error(`Error refreshing ${collectionName}:`, err)
+      setError(`Failed to load ${collectionName}`)
     }
   }, [collectionName])
 
