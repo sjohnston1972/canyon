@@ -3,6 +3,7 @@ import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { useTheme } from '@/hooks/useTheme'
 import ChatBot from '@/components/chat/ChatBot'
 import FeatureAnnouncement from '@/components/common/FeatureAnnouncement'
+import pb from '@/lib/pocketbase'
 
 const navItems = [
   { to: '/command', label: 'Timeline', icon: 'explore' },
@@ -60,15 +61,24 @@ export default function AppShell() {
               </nav>
             </div>
           </div>
-          <button
-            onClick={toggleTheme}
-            className="w-8 h-8 flex items-center justify-center text-on-surface-variant hover:text-on-surface transition-colors"
-            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-          >
-            <span className="material-symbols-outlined text-lg">
-              {theme === 'dark' ? 'light_mode' : 'dark_mode'}
-            </span>
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={toggleTheme}
+              className="w-8 h-8 flex items-center justify-center text-on-surface-variant hover:text-on-surface transition-colors"
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              <span className="material-symbols-outlined text-lg">
+                {theme === 'dark' ? 'light_mode' : 'dark_mode'}
+              </span>
+            </button>
+            <button
+              onClick={() => pb.authStore.clear()}
+              className="w-8 h-8 flex items-center justify-center text-on-surface-variant hover:text-on-surface transition-colors"
+              title="Log out"
+            >
+              <span className="material-symbols-outlined text-lg">logout</span>
+            </button>
+          </div>
         </div>
 
         {/* Mobile nav drawer */}
