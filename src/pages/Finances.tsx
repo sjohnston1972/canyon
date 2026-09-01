@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useCollection } from '@/hooks/useCollection'
 import { loadFxData, type FxData, type FxHistoryPoint } from '@/lib/fx'
-import { toGbp, fxRateFor, type FxRates } from '@/lib/currency'
+import { toGbp, fxRateFor, gbp, usd, fmtByCcy, autoFillGbp, type FxRates } from '@/lib/currency'
 import LedgerImport from '@/components/finance/LedgerImport'
 import type { RecordModel } from 'pocketbase'
 
@@ -53,23 +53,6 @@ const inputClasses =
   'w-full bg-surface-container-lowest text-on-surface font-mono text-sm border-b-2 border-outline-variant/30 focus:border-primary focus:outline-none px-2 py-1.5'
 const selectClasses =
   'w-full bg-surface-container-lowest text-on-surface font-mono text-sm border-b-2 border-outline-variant/30 focus:border-primary focus:outline-none px-2 py-1.5 appearance-none cursor-pointer'
-
-function gbp(n: number): string {
-  return `£${n.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-}
-function usd(n: number): string {
-  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-}
-function eur(n: number): string {
-  return `€${n.toLocaleString('en-IE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-}
-// Format a raw (pre-conversion) amount with the symbol matching its own currency,
-// so a EUR row doesn't display with a £ or $ sign.
-function fmtByCcy(n: number, ccy: string): string {
-  if (ccy === 'USD') return usd(n)
-  if (ccy === 'EUR') return eur(n)
-  return gbp(n)
-}
 
 // --- Main page ---
 
@@ -858,14 +841,6 @@ function LedgerSection({ ledger, team, rates, createLedger, updateLedger, remove
       description: '',
       note: '',
     })
-  }
-
-  const autoFillGbp = (d: Partial<LedgerEntry>): Partial<LedgerEntry> => {
-    const amt = Number(d.amount) || 0
-    const ccy = d.ccy || 'GBP'
-    const fxRate = Number(d.fx_gbp) || 1
-    const gbpAmount = ccy === 'GBP' ? amt : amt * fxRate
-    return { ...d, amount_gbp: Number(gbpAmount.toFixed(2)) }
   }
 
   // Called when the currency select changes in the row editor: refresh fx_gbp to the
