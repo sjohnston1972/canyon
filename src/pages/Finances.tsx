@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useCollection } from '@/hooks/useCollection'
 import { loadFxData, type FxData, type FxHistoryPoint } from '@/lib/fx'
+import { toGbp, fxRateFor, type FxRates } from '@/lib/currency'
 import LedgerImport from '@/components/finance/LedgerImport'
 import type { RecordModel } from 'pocketbase'
 
@@ -44,6 +45,7 @@ const DUE_CODES = ['IMMED', 'T-90', 'T-30', 'T-7', 'POST_TRIP'] as const
 const CCYS = ['GBP', 'USD', 'EUR'] as const
 const LEDGER_CATEGORIES = ['BANK', 'Lottery', 'NPS', 'Outfitter', 'Travel', 'Food', 'Fuel', 'Misc', 'Refund'] as const
 const DEFAULT_FX_USD_GBP = 0.75
+const DEFAULT_FX_EUR_GBP = 0.85
 
 // --- Small UI helpers ---
 
@@ -58,11 +60,15 @@ function gbp(n: number): string {
 function usd(n: number): string {
   return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
-
-function toGbp(amount: number, ccy: string, fx: number): number {
-  if (ccy === 'GBP') return amount
-  if (ccy === 'USD') return amount * fx
-  return amount // unknown — leave as-is
+function eur(n: number): string {
+  return `€${n.toLocaleString('en-IE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+// Format a raw (pre-conversion) amount with the symbol matching its own currency,
+// so a EUR row doesn't display with a £ or $ sign.
+function fmtByCcy(n: number, ccy: string): string {
+  if (ccy === 'USD') return usd(n)
+  if (ccy === 'EUR') return eur(n)
+  return gbp(n)
 }
 
 // --- Main page ---
@@ -111,10 +117,11 @@ function Sparkline({ values, width = 100, height = 24, color = 'currentColor', s
   )
 }
 
-// Compact FX card — shows current rate, sparkline of last 30 days, refresh button
-function FxCard({ fxData, fx, loading, onRefresh }: {
+// Compact FX card — shows current rates, sparkline of last 30 days, refresh button
+function FxCard({ fxData, fx, eurRate, loading, onRefresh }: {
   fxData: FxData | null
   fx: number
+  eurRate: number
   loading: boolean
   onRefresh: () => void
 }) {
@@ -152,6 +159,11 @@ function FxCard({ fxData, fx, loading, onRefresh }: {
         <Sparkline values={values} width={200} height={28} />
       </div>
 
+      <div className="flex items-baseline justify-between mt-2">
+        <p className="tactical-label text-[9px] normal-case tracking-normal text-outline">EUR → GBP</p>
+        <p className="font-mono text-xs text-on-surface-variant">{eurRate.toFixed(4)}</p>
+      </div>
+
       {fxData ? (
         <p className="tactical-label text-[9px] mt-2 normal-case tracking-normal text-outline">
           30-day trend · as of {fxData.date}
@@ -178,7 +190,9 @@ export default function Finances() {
   const [fxData, setFxData] = useState<FxData | null>(null)
   const [fxLoading, setFxLoading] = useState(false)
   const [activeSection, setActiveSection] = useState<Section>('overview')
-  const fx = fxData?.rate ?? DEFAULT_FX_USD_GBP
+  const fx = fxData?.usdGbp ?? DEFAULT_FX_USD_GBP
+  const eurRate = fxData?.eurGbp ?? DEFAULT_FX_EUR_GBP
+  const rates: FxRates = useMemo(() => ({ usdGbp: fx, eurGbp: eurRate }), [fx, eurRate])
 
   // Load live FX data (cached 6h)
   useEffect(() => {
@@ -206,10 +220,10 @@ export default function Finances() {
   // --- Derived finance figures ---
 
   const derivedCosts = useMemo(() => costs.map((c) => {
-    const amount_gbp = toGbp(c.amount, c.ccy || 'USD', fx)
+    const amount_gbp = toGbp(c.amount, c.ccy || 'USD', rates)
     const per_person = c.shared ? amount_gbp / attendeeCount : amount_gbp
     return { ...c, amount_gbp, per_person }
-  }), [costs, fx, attendeeCount])
+  }), [costs, rates, attendeeCount])
 
   const totalBudgetGbp = derivedCosts.reduce((s, c) => s + c.amount_gbp, 0)
   const perPersonTargetGbp = derivedCosts.reduce((s, c) => s + c.per_person, 0)
@@ -278,7 +292,7 @@ export default function Finances() {
           ))}
         </div>
         <div className="flex-1 border-t border-outline-variant/20 p-3 mt-3">
-          <FxCard fxData={fxData} fx={fx} loading={fxLoading} onRefresh={refreshFx} />
+          <FxCard fxData={fxData} fx={fx} eurRate={eurRate} loading={fxLoading} onRefresh={refreshFx} />
         </div>
       </aside>
 
@@ -332,7 +346,7 @@ export default function Finances() {
 
           {/* Mobile-only FX card — sidebar only shows on desktop */}
           <div className="lg:hidden surface-card">
-            <FxCard fxData={fxData} fx={fx} loading={fxLoading} onRefresh={refreshFx} />
+            <FxCard fxData={fxData} fx={fx} eurRate={eurRate} loading={fxLoading} onRefresh={refreshFx} />
           </div>
 
           {activeSection === 'overview' && (
@@ -362,7 +376,7 @@ export default function Finances() {
             <LedgerSection
               ledger={ledger}
               team={team}
-              fx={fx}
+              rates={rates}
               createLedger={createLedger}
               updateLedger={updateLedger}
               removeLedger={removeLedger}
@@ -636,7 +650,7 @@ function BudgetSection({ costs, fx, attendeeCount, createCost, updateCost, remov
                 </div>
                 <span className="tactical-label text-[10px]">{c.category || '—'}</span>
                 <span className="font-mono text-sm text-on-surface">
-                  {c.ccy === 'USD' ? usd(c.amount) : gbp(c.amount)}
+                  {fmtByCcy(c.amount, c.ccy)}
                 </span>
                 <span className="font-mono text-xs text-outline">{c.ccy}</span>
                 <span className="font-mono text-sm text-on-surface">{gbp(c.amount_gbp)}</span>
@@ -799,10 +813,10 @@ function CostEditRow({ draft, setDraft, save, cancel }: {
 
 // --- Ledger section ---
 
-function LedgerSection({ ledger, team, fx, createLedger, updateLedger, removeLedger }: {
+function LedgerSection({ ledger, team, rates, createLedger, updateLedger, removeLedger }: {
   ledger: LedgerEntry[]
   team: TeamMemberRecord[]
-  fx: number
+  rates: FxRates
   createLedger: (data: Partial<LedgerEntry>) => Promise<LedgerEntry>
   updateLedger: (id: string, data: Partial<LedgerEntry>) => Promise<LedgerEntry>
   removeLedger: (id: string) => Promise<void>
@@ -831,14 +845,15 @@ function LedgerSection({ ledger, team, fx, createLedger, updateLedger, removeLed
 
   const startNew = () => {
     setEditingId('__new__')
+    const ccy = 'GBP'
     setDraft({
       date: new Date().toISOString().slice(0, 10),
       direction: 'IN',
       category: 'BANK',
       paid_by: '',
       amount: 0,
-      ccy: 'GBP',
-      fx_gbp: fx,
+      ccy,
+      fx_gbp: fxRateFor(ccy, rates),
       amount_gbp: 0,
       description: '',
       note: '',
@@ -851,6 +866,14 @@ function LedgerSection({ ledger, team, fx, createLedger, updateLedger, removeLed
     const fxRate = Number(d.fx_gbp) || 1
     const gbpAmount = ccy === 'GBP' ? amt : amt * fxRate
     return { ...d, amount_gbp: Number(gbpAmount.toFixed(2)) }
+  }
+
+  // Called when the currency select changes in the row editor: refresh fx_gbp to the
+  // correct per-currency rate and recompute amount_gbp so a EUR row never keeps a
+  // stale USD-derived fx_gbp (or vice versa).
+  const onCcyChange = (newCcy: string) => {
+    const fx_gbp = fxRateFor(newCcy, rates)
+    setDraft((d) => autoFillGbp({ ...d, ccy: newCcy, fx_gbp }))
   }
 
   const save = async () => {
@@ -904,7 +927,7 @@ function LedgerSection({ ledger, team, fx, createLedger, updateLedger, removeLed
       </div>
 
       {importing && (
-        <LedgerImport fx={fx} createLedger={createLedger} onClose={() => setImporting(false)} />
+        <LedgerImport rates={rates} createLedger={createLedger} onClose={() => setImporting(false)} />
       )}
 
       <div className="surface-card p-0 overflow-hidden">
@@ -922,13 +945,13 @@ function LedgerSection({ ledger, team, fx, createLedger, updateLedger, removeLed
         </div>
 
         {editingId === '__new__' && (
-          <LedgerEditRow draft={draft} setDraft={setDraft} save={save} cancel={() => { setEditingId(null); setDraft({}) }} paddlerNames={paddlerNames} />
+          <LedgerEditRow draft={draft} setDraft={setDraft} save={save} cancel={() => { setEditingId(null); setDraft({}) }} paddlerNames={paddlerNames} onCcyChange={onCcyChange} />
         )}
 
         {filtered.map((e) => {
           const isEditing = editingId === e.id
           if (isEditing) {
-            return <LedgerEditRow key={e.id} draft={draft} setDraft={setDraft} save={save} cancel={() => { setEditingId(null); setDraft({}) }} paddlerNames={paddlerNames} />
+            return <LedgerEditRow key={e.id} draft={draft} setDraft={setDraft} save={save} cancel={() => { setEditingId(null); setDraft({}) }} paddlerNames={paddlerNames} onCcyChange={onCcyChange} />
           }
           return (
             <div key={e.id}>
@@ -943,7 +966,7 @@ function LedgerSection({ ledger, team, fx, createLedger, updateLedger, removeLed
                 <span className="tactical-label text-[10px]">{e.category || '—'}</span>
                 <span className="font-mono text-xs text-on-surface truncate">{e.paid_by || '—'}</span>
                 <span className="font-mono text-sm text-on-surface text-right">
-                  {e.ccy === 'USD' ? usd(e.amount || 0) : gbp(e.amount || 0)}
+                  {fmtByCcy(e.amount || 0, e.ccy)}
                 </span>
                 <span className="font-mono text-[10px] text-outline">{e.ccy || '—'}</span>
                 <span className={`font-mono text-sm text-right ${e.direction === 'IN' ? 'text-tertiary' : 'text-on-surface'}`}>
@@ -1016,12 +1039,13 @@ function LedgerSection({ ledger, team, fx, createLedger, updateLedger, removeLed
   )
 }
 
-function LedgerEditRow({ draft, setDraft, save, cancel, paddlerNames }: {
+function LedgerEditRow({ draft, setDraft, save, cancel, paddlerNames, onCcyChange }: {
   draft: Partial<LedgerEntry>
   setDraft: (d: Partial<LedgerEntry>) => void
   save: () => void
   cancel: () => void
   paddlerNames: string[]
+  onCcyChange: (ccy: string) => void
 }) {
   // Compute previewed GBP amount
   const previewGbp = (() => {
@@ -1045,7 +1069,7 @@ function LedgerEditRow({ draft, setDraft, save, cancel, paddlerNames }: {
         </select>
         <input className={inputClasses} list="paddler-names" placeholder="Name / payee" value={draft.paid_by ?? ''} onChange={(e) => setDraft({ ...draft, paid_by: e.target.value })} />
         <input className={`${inputClasses} text-right`} type="number" step="0.01" value={draft.amount ?? 0} onChange={(e) => setDraft({ ...draft, amount: parseFloat(e.target.value) || 0 })} />
-        <select className={selectClasses} value={draft.ccy ?? 'GBP'} onChange={(e) => setDraft({ ...draft, ccy: e.target.value })}>
+        <select className={selectClasses} value={draft.ccy ?? 'GBP'} onChange={(e) => onCcyChange(e.target.value)}>
           {CCYS.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
         <input className={`${inputClasses} text-right`} type="number" step="0.01" placeholder={`auto (${gbp(previewGbp)})`} value={draft.amount_gbp ?? ''} onChange={(e) => setDraft({ ...draft, amount_gbp: parseFloat(e.target.value) || 0 })} />
@@ -1085,7 +1109,7 @@ function LedgerEditRow({ draft, setDraft, save, cancel, paddlerNames }: {
         </select>
         <div className="grid grid-cols-2 gap-2">
           <input className={inputClasses} type="number" step="0.01" placeholder="Amount" value={draft.amount ?? 0} onChange={(e) => setDraft({ ...draft, amount: parseFloat(e.target.value) || 0 })} />
-          <select className={selectClasses} value={draft.ccy ?? 'GBP'} onChange={(e) => setDraft({ ...draft, ccy: e.target.value })}>
+          <select className={selectClasses} value={draft.ccy ?? 'GBP'} onChange={(e) => onCcyChange(e.target.value)}>
             {CCYS.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
