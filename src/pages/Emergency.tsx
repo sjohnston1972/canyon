@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useCollection } from '@/hooks/useCollection'
 import type { RecordModel } from 'pocketbase'
 import pb from '@/lib/pocketbase'
-import { createPdf, addSectionHeader, addText, addTable, addKeyValue, savePdf } from '@/lib/pdf-export'
+import { createPdf, addSectionHeader, addText, addTable, savePdf } from '@/lib/pdf-export'
 
 interface EmergencyContactRecord extends RecordModel {
   name: string

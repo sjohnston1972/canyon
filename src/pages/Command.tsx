@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { rapidBeta, rapidBetaMap } from '@/data/rapid-beta'
+import { rapidBetaMap } from '@/data/rapid-beta'
 import type { RapidBeta } from '@/data/rapid-beta'
 import { rapidMedia as initialRapidMedia } from '@/data/rapid-media'
 import type { RapidMedia } from '@/data/rapid-media'

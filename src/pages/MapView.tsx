@@ -8,11 +8,9 @@ import {
 } from '@vis.gl/react-google-maps'
 import { waypoints, riverPath as defaultRiverPath, markerColors, isMajorRapid, MAJOR_RAPID_THRESHOLD } from '@/data/waypoints'
 import type { Waypoint } from '@/data/waypoints'
-import { tacticalMapStyles } from '@/data/map-styles'
 import pb from '@/lib/pocketbase'
 
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''
-const MAP_ID = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || ''
 
 // Grand Canyon center point
 const CANYON_CENTER = { lat: 36.18, lng: -112.05 }
@@ -736,16 +734,6 @@ export default function MapView() {
   // Suppress drag-dismiss during programmatic pans
   const panningRef = useRef(false)
 
-  // Pan + zoom — used by sidebar clicks
-  const handleFlyTo = useCallback((lat: number, lng: number) => {
-    if (mapRef) {
-      panningRef.current = true
-      mapRef.panTo({ lat, lng })
-      mapRef.setZoom(13)
-      setTimeout(() => { panningRef.current = false }, 1000)
-    }
-  }, [mapRef])
-
   // Sidebar click — select AND fly to, close mobile left panel, show preview
   const handleSidebarSelect = useCallback((wp: Waypoint) => {
     panningRef.current = true
@@ -768,6 +756,21 @@ export default function MapView() {
   const handleMapClick = useCallback(() => {
     setSelectedWaypoint(null)
     setMobileRightOpen(false)
+  }, [])
+
+  // Map drag — dismiss selection unless we're mid-programmatic pan.
+  // Hoisted out of the JSX (was previously called conditionally inside the
+  // `API_KEY ?` branch below, which violates rules-of-hooks) — behavior unchanged.
+  const handleMapDrag = useCallback(() => {
+    if (panningRef.current) return
+    setSelectedWaypoint(null)
+    setMobileRightOpen(false)
+  }, [])
+
+  // Mobile "info" tap on the map — open the right panel.
+  // Hoisted for the same reason as handleMapDrag above.
+  const handleInfoClick = useCallback(() => {
+    setMobileRightOpen(true)
   }, [])
 
   return (
@@ -828,14 +831,8 @@ export default function MapView() {
               selectedWaypoint={selectedWaypoint}
               onSelectWaypoint={handleMarkerSelect}
               onMapClick={handleMapClick}
-              onMapDrag={useCallback(() => {
-                if (panningRef.current) return
-                setSelectedWaypoint(null)
-                setMobileRightOpen(false)
-              }, [])}
-              onInfoClick={useCallback(() => {
-                setMobileRightOpen(true)
-              }, [])}
+              onMapDrag={handleMapDrag}
+              onInfoClick={handleInfoClick}
               setMapType={setMapType}
             />
 
