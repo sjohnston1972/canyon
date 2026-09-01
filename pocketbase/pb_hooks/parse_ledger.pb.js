@@ -4,7 +4,32 @@
 // and extracts ledger entries. Uses a forced tool-call so Claude returns structured rows.
 // The key stays server-side (same pattern as /api/chat). Nothing is written here — the
 // client reviews the proposed rows and commits them to the `finances` collection itself.
+//
+// Security (issues #10, #11): requires a signed-in "users" record via PocketBase's own
+// $apis.requireAuth() middleware, and is rate-limited per authenticated identity;
+// oversized base64 payloads are rejected before this ever calls Anthropic (this is the
+// most expensive call in the app — sonnet + max_tokens 8000).
+//
+// NOTE: constants and require() are declared *inside* the routerAdd handler rather than
+// at file top-level — PocketBase's JSVM pool invokes a registered route handler without
+// the enclosing file's top-level lexical scope, so a top-level const referenced only from
+// inside the handler resolves as "not defined" at request time even though it works
+// during the initial hook-registration pass.
 routerAdd("POST", "/api/parse-ledger", (e) => {
+  const ledgerCommon = require(`${__hooks}/_ai_common.js`)
+
+  const MAX_TEXT_CHARS = 200000
+  const MAX_BASE64_CHARS = 14 * 1024 * 1024 // ~14MB base64 ≈ 10MB binary (images/PDFs)
+  const LEDGER_RATE_LIMIT_MAX_REQUESTS = 5
+  const LEDGER_RATE_LIMIT_WINDOW_SECONDS = 60
+
+  // Authentication itself is enforced by $apis.requireAuth() below (before this handler
+  // runs) — e.auth is guaranteed populated here.
+  const identity = ledgerCommon.callerIdentity(e)
+  if (!ledgerCommon.checkRateLimit("parse-ledger", identity, LEDGER_RATE_LIMIT_MAX_REQUESTS, LEDGER_RATE_LIMIT_WINDOW_SECONDS)) {
+    return e.json(429, { error: "Too many import requests — slow down and try again in a minute." })
+  }
+
   const apiKey = $os.getenv("ANTHROPIC_API_KEY")
   if (!apiKey) {
     return e.json(500, { error: "ANTHROPIC_API_KEY environment variable not set on the server" })
@@ -31,17 +56,23 @@ routerAdd("POST", "/api/parse-ledger", (e) => {
     }
     content.push({
       type: "text",
-      text: "Here is the contents of a finance file (txt or csv). Extract every transaction as a ledger entry:\n\n" + String(text).slice(0, 200000),
+      text: "Here is the contents of a finance file (txt or csv). Extract every transaction as a ledger entry:\n\n" + String(text).slice(0, MAX_TEXT_CHARS),
     })
   } else if (kind === "image") {
     if (!data || !mediaType) {
       return e.json(400, { error: "Missing 'data' or 'mediaType' for image import" })
+    }
+    if (String(data).length > MAX_BASE64_CHARS) {
+      return e.json(413, { error: "File is too large — please upload a file under ~10MB" })
     }
     content.push({ type: "image", source: { type: "base64", media_type: mediaType, data: data } })
     content.push({ type: "text", text: "Extract every transaction visible in this image as a ledger entry." })
   } else if (kind === "pdf") {
     if (!data) {
       return e.json(400, { error: "Missing 'data' for pdf import" })
+    }
+    if (String(data).length > MAX_BASE64_CHARS) {
+      return e.json(413, { error: "File is too large — please upload a file under ~10MB" })
     }
     content.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data: data } })
     content.push({ type: "text", text: "Extract every transaction in this PDF as a ledger entry." })
@@ -149,4 +180,4 @@ routerAdd("POST", "/api/parse-ledger", (e) => {
   } catch (err) {
     return e.json(500, { error: "Failed to reach Anthropic: " + err })
   }
-})
+}, $apis.requireAuth())

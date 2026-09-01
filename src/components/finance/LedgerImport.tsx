@@ -1,5 +1,11 @@
 import { useRef, useState } from 'react'
 import { toGbp, fxRateFor, type FxRates } from '@/lib/currency'
+import pb from '@/lib/pocketbase'
+
+// Mirrors the server-side cap in pocketbase/pb_hooks/parse_ledger.pb.js (~14MB of
+// base64 ≈ 10MB binary) — checked client-side before we even read the file, so the
+// user gets an immediate, friendly error instead of a round trip to the server.
+const MAX_FILE_BYTES = 10 * 1024 * 1024
 
 // Mirrors the ledger fields the import writes. Kept local to avoid coupling to Finances.tsx.
 interface LedgerEntryInput {
@@ -94,16 +100,31 @@ export default function LedgerImport({ rates, createLedger, onClose }: {
   async function handleFile(file: File) {
     setError('')
     setFileName(file.name)
+
+    if (file.size > MAX_FILE_BYTES) {
+      setError(`That file is ${(file.size / (1024 * 1024)).toFixed(1)}MB — please upload a file under 10MB.`)
+      return
+    }
+
     setPhase('parsing')
     try {
       const payload = await readFile(file)
       const res = await fetch('/api/parse-ledger', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          'Authorization': `Bearer ${pb.authStore.token}`,
+        },
         body: JSON.stringify({ ...payload, today: new Date().toISOString().slice(0, 10) }),
       })
       const json = await res.json()
       if (!res.ok) {
+        if (res.status === 429) {
+          throw new Error(json.error || 'Too many import requests — wait a minute and try again.')
+        }
+        if (res.status === 413) {
+          throw new Error(json.error || 'That file is too large to import.')
+        }
         throw new Error(json.error || `Parse failed (HTTP ${res.status})`)
       }
       const parsed: ParsedEntry[] = json.entries || []
