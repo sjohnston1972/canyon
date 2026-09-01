@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { toGbp, fxRateFor, type FxRates } from '@/lib/currency'
 
 // Mirrors the ledger fields the import writes. Kept local to avoid coupling to Finances.tsx.
 interface LedgerEntryInput {
@@ -75,8 +76,8 @@ function readFile(file: File): Promise<{ kind: string; text?: string; data?: str
   })
 }
 
-export default function LedgerImport({ fx, createLedger, onClose }: {
-  fx: number
+export default function LedgerImport({ rates, createLedger, onClose }: {
+  rates: FxRates
   createLedger: (data: Partial<LedgerEntryInput>) => Promise<unknown>
   onClose: () => void
 }) {
@@ -86,6 +87,9 @@ export default function LedgerImport({ fx, createLedger, onClose }: {
   const [error, setError] = useState('')
   const [summary, setSummary] = useState('')
   const [rows, setRows] = useState<StagedRow[]>([])
+  // Rows already written to PocketBase this commit pass, keyed by staged row id —
+  // lets a retry after a partial failure skip re-writing rows that already succeeded.
+  const committedIdsRef = useRef<Set<number>>(new Set())
 
   async function handleFile(file: File) {
     setError('')
@@ -138,23 +142,41 @@ export default function LedgerImport({ fx, createLedger, onClose }: {
   async function commit() {
     setPhase('committing')
     setError('')
+    let failedCount = 0
     try {
       for (const r of kept) {
+        // Resumable commit: skip rows already written by a previous (partially failed) pass.
+        if (committedIdsRef.current.has(r._id)) continue
         const amount = Number(r.amount) || 0
         const ccy = r.ccy || 'GBP'
-        const amount_gbp = ccy === 'GBP' ? amount : Number((amount * fx).toFixed(2))
-        await createLedger({
-          description: r.description || '',
-          category: r.category || 'Misc',
-          amount,
-          paid_by: r.paid_by || '',
-          date: r.date || '',
-          direction: r.direction || 'OUT',
-          ccy,
-          fx_gbp: ccy === 'GBP' ? 1 : fx,
-          amount_gbp,
-          note: 'Imported from ' + fileName,
-        })
+        const fx_gbp = fxRateFor(ccy, rates)
+        const amount_gbp = toGbp(amount, ccy, rates)
+        try {
+          await createLedger({
+            description: r.description || '',
+            category: r.category || 'Misc',
+            amount,
+            paid_by: r.paid_by || '',
+            date: r.date || '',
+            direction: r.direction || 'OUT',
+            ccy,
+            fx_gbp,
+            amount_gbp,
+            note: 'Imported from ' + fileName,
+          })
+          committedIdsRef.current.add(r._id)
+        } catch (rowErr) {
+          failedCount++
+          console.error(`Commit failed for row ${r._id}`, rowErr)
+        }
+      }
+      if (failedCount > 0) {
+        setError(
+          `${failedCount} of ${kept.length} ${failedCount === 1 ? 'entry' : 'entries'} failed to write. ` +
+          `The rest were saved — fix the issue and commit again to retry just the failed rows.`
+        )
+        setPhase('review')
+        return
       }
       onClose()
     } catch (err) {
@@ -315,7 +337,7 @@ export default function LedgerImport({ fx, createLedger, onClose }: {
         {(phase === 'review' || phase === 'committing') && (
           <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-outline-variant/20 flex-shrink-0">
             <p className="tactical-label text-[9px] text-outline normal-case tracking-normal">
-              Non-GBP rows convert at the current rate ({fx.toFixed(4)}) on commit.
+              USD rows convert at {rates.usdGbp.toFixed(4)}, EUR rows at {rates.eurGbp.toFixed(4)} on commit.
             </p>
             <div className="flex gap-2">
               <button
